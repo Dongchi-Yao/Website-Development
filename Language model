@@ -1,0 +1,25 @@
+# This is the back-end langauge model that I have trained
+
+# Function to interact with the GPT-4o-mini API
+def ask_gpt4o_mini(question):
+    # API request with max_tokens to control output length
+    response = client.chat.completions.create(
+        model="ft:gpt-4o-mini-2024-07-18:personal::ApDHlmp5",  # Specify the model, we can change the model later
+        messages=[
+            {"role": "system", "content": "You are an assistant that helps with cybersecurity risk management in construction projects."},
+            {"role": "user", "content": question}
+        ],
+        max_tokens=50  # Limit the response to approximately 50 tokens
+    )
+
+    answer = response.choices[0].message.content
+    return answer
+
+
+prompts = [] # Here the use should input a list of prompts. 
+gpt4o_mini_stage_1_answers=[]
+for i in prompts:
+  temp=[]
+  for j in i:
+    temp.append(ask_gpt4o_mini(j))
+  gpt4o_mini_stage_1_answers.append(temp)
