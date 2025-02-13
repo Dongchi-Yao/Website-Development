@@ -21,4 +21,4 @@ test_sample = test_sample_tensor  # Make sure test_sample_tensor is defined
 ridge_pred = ridge_cv.predict(test_sample.view(1,-1).numpy())
 predicted_value=round(ridge_pred[0], 2)
 
-predicted_value
+print (predicted_value)
