@@ -40,12 +40,22 @@
       font-size: 1em;
       border-radius: 4px;
     }
-    .result {
+    .results-container {
       margin-top: 2em;
       padding: 1em;
       background-color: #f0f8ff;
       border: 1px solid #ccc;
       display: none; /* Hidden by default, will show after calculation */
+    }
+    .risk-result {
+      border: 1px solid #ccc;
+      padding: 1em;
+      margin-bottom: 1em;
+      border-radius: 4px;
+      background-color: #fff;
+    }
+    .risk-result h2 {
+      margin-top: 0;
     }
     footer {
       text-align: center;
@@ -72,12 +82,12 @@
 
 <div class="section">
   <h1>Cyber Risk Quantification</h1>
-  <p>Please fill in the following 46 features for your construction project to calculate a risk score:</p>
+  <p>Please fill in the following 46 features for your construction project to calculate the risk scores for five threat types:</p>
   
   <form id="risk-form">
     <!-- For brevity, only a few features are shown. Replicate as needed. -->
     <div class="form-group">
-      <label for="feature1">Feature 1:</label>
+      <label for="feature1">Feature 1 (Example only):</label>
       <select id="feature1" name="feature1">
         <option value="">--Select--</option>
         <option value="low">Low</option>
@@ -86,21 +96,16 @@
       </select>
     </div>
     <div class="form-group">
-      <label for="feature2">Feature 2:</label>
+      <label for="feature2">Feature 2 (Example only):</label>
       <input type="text" id="feature2" name="feature2" placeholder="Enter details" />
     </div>
-    <!-- Repeat for all 46 features... -->
-    
-    <!-- ... up to Feature 46 ... -->
+    <!-- ... Repeat for all 46 features ... -->
     
     <button type="button" id="calculate-btn">Submit &amp; Calculate Risk</button>
   </form>
 
-  <div class="result" id="risk-result">
-    <h2>Risk Score Output: <span id="risk-score">XX%</span></h2>
-    <p><strong>Risk Level:</strong> <span id="risk-level">(Low/Medium/High)</span></p>
-    <h3>Recommendations &amp; Risk Mitigation Steps</h3>
-    <p id="risk-recommendations">[Placeholder recommendations will appear here]</p>
+  <div class="results-container" id="results-container">
+    <!-- Each risk type's score and recommendations will go here -->
   </div>
   
   <p><a href="index.html">&larr; Back to Dashboard</a></p>
@@ -113,33 +118,55 @@
 </footer>
 
 <script>
-  // Basic placeholder calculation
   document.getElementById('calculate-btn').addEventListener('click', function() {
-    // In a real scenario, you'd gather all 46 inputs and calculate or call an API
-    // For now, just show random or placeholder data
-    const resultContainer = document.getElementById('risk-result');
-    const scoreElement = document.getElementById('risk-score');
-    const levelElement = document.getElementById('risk-level');
-    const recsElement = document.getElementById('risk-recommendations');
+    // In a real scenario, you'd gather all 46 inputs here.
+    // For demonstration, we'll just generate random scores.
 
-    // Simple mock logic for demonstration
-    const randomScore = Math.floor(Math.random() * 101); // 0 - 100
-    scoreElement.textContent = randomScore + "%";
-    
-    let level = "Low";
-    let recs = "Implement basic cybersecurity measures such as strong passwords and firewalls.";
-    if(randomScore > 60 && randomScore <= 80) {
-      level = "Medium";
-      recs = "Increase employee training, conduct regular audits, implement advanced threat detection.";
-    } else if(randomScore > 80) {
-      level = "High";
-      recs = "Consider a dedicated cybersecurity team, 24/7 monitoring, advanced encryption, and strict access controls.";
-    }
-    levelElement.textContent = level;
-    recsElement.textContent = recs;
+    // Five types of risks
+    const riskTypes = [
+      "Ransomware",
+      "Phishing",
+      "Data Breach",
+      "Insider Attack",
+      "Supply Chain Attack"
+    ];
 
-    resultContainer.style.display = "block";
-    resultContainer.scrollIntoView();
+    // We'll generate a random score (0 to 100) for each risk type.
+    // Then, assign a 'Low/Medium/High' label and placeholder recommendations.
+    const resultsContainer = document.getElementById('results-container');
+    resultsContainer.innerHTML = ""; // Clear previous results
+    resultsContainer.style.display = "block";
+
+    riskTypes.forEach((type) => {
+      const score = Math.floor(Math.random() * 101); // 0 - 100
+      let level = "Low";
+      let recs = "Implement basic cybersecurity measures (e.g. strong passwords, firewalls).";
+
+      if(score > 60 && score <= 80) {
+        level = "Medium";
+        recs = "Increase employee training, conduct regular audits, implement advanced threat detection.";
+      } else if(score > 80) {
+        level = "High";
+        recs = "24/7 monitoring, advanced encryption, strict access controls, and dedicated cybersecurity staff.";
+      }
+
+      // Create a container for each risk result
+      const riskDiv = document.createElement('div');
+      riskDiv.className = "risk-result";
+
+      riskDiv.innerHTML = `
+        <h2>${type} Risk</h2>
+        <p><strong>Score:</strong> ${score}%</p>
+        <p><strong>Level:</strong> ${level}</p>
+        <h3>Recommendations</h3>
+        <p>${recs}</p>
+      `;
+
+      resultsContainer.appendChild(riskDiv);
+    });
+
+    // Scroll into view to the results section
+    resultsContainer.scrollIntoView();
   });
 </script>
 </body>
