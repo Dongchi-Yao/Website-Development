@@ -45,4 +45,5 @@ model.eval()  # set the model to evaluation mode
 with torch.no_grad():
     prediction = model(test_sample_tensor.to(device)) # Using the tensor of the first sample directly
     prediction_value = round(prediction.item(), 2)
-prediction_value
+
+print (prediction_value)
