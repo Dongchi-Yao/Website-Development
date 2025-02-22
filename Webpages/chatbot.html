@@ -4,52 +4,181 @@
   <meta charset="UTF-8" />
   <title>Cyber Risk Identification</title>
   <style>
+    /* 
+      Morandi-inspired color for the main section:
+      - Section background: #EAE7DC
+      - Section border: #CABFB5
+    */
+
+    /* General site palette (header & footer kept dark navy for contrast): */
     body {
       margin: 0;
       font-family: Arial, sans-serif;
+      background-color: #F2F2F2;  /* Light gray background */
+      color: #333;
     }
+
+    /* Header and Footer styling (both dark navy) */
     header, footer {
-      background-color: #f8f8f8;
+      background-color: #2C3E50;
       padding: 1em;
+      color: #fff; /* White text */
+      text-align: center;
     }
+
+    header nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Logo text color in header */
+    .logo {
+      font-weight: bold;
+      color: #fff;
+    }
+
+    /* Navigation links in header */
     nav a {
       margin: 0 10px;
       text-decoration: none;
+      color: #fff;      /* White text on dark navy background */
+    }
+    nav a:hover {
+      color: #BDC3C7;   /* Lighter gray on hover */
+    }
+
+    /* Main sections: Morandi-inspired background (#EAE7DC) and border (#CABFB5) */
+    .section {
+      background-color: #EEEEEE;
+      margin: 2em;
+      padding: 2em;
+      border-radius: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      border: 2px solid #CABFB5; /* A dusty neutral border */
+    }
+
+    /* Increase vertical gap for sub-section headings */
+    .section h3 {
+      margin-top: 2em;       /* Extra space before the h3 heading */
+      margin-bottom: 0.5em;  /* Space between heading and content */
+    }
+
+    /* General spacing for paragraphs */
+    .section p {
+      margin-bottom: 1.5em;
+    }
+
+    /*
+      Chat container with flex layout:
+      - Left sidebar for chat history
+      - Right area for chat messages & input
+    */
+    .chat-container {
+      display: flex;
+      background-color: #fff;
+      border: 1px solid #BDC3C7;
+      border-radius: 4px;
+      height: 500px;
+      margin-bottom: 1em;
+      overflow: hidden;
+    }
+
+    /* Narrower Chat History */
+    .chat-sidebar {
+      width: 20%; /* Reduced from 25% to 20% */
+      background-color: #F8F9FA;
+      border-right: 1px solid #BDC3C7;
+      padding: 1em;
+      overflow-y: auto;
+    }
+    .chat-sidebar h3 {
+      margin-top: 0;
+    }
+    .chat-sidebar ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    .chat-sidebar li {
+      margin-bottom: 0.5em;
+    }
+    .chat-sidebar a {
+      text-decoration: none;
       color: #333;
     }
-    .section {
-      padding: 2em;
+    .chat-sidebar a:hover {
+      text-decoration: underline;
     }
-    .chat-container {
-      border: 1px solid #ccc;
+
+    /* Main chat content */
+    .chat-content {
+      display: flex;
+      flex-direction: column;
+      width: 80%; /* Adjusted to fill remaining space */
       padding: 1em;
-      height: 300px;
+    }
+
+    /* Scrollable area for messages */
+    .chat-window {
+      flex: 1;
       overflow-y: auto;
+      border: 1px solid #BDC3C7;
+      border-radius: 4px;
+      padding: 1em;
       margin-bottom: 1em;
     }
+
+    /* Taller message bar by increasing input & button padding */
     .chat-input {
       display: flex;
       gap: 1em;
+      margin-bottom: 1em;
+      align-items: center; /* Ensures buttons align vertically with the input */
     }
     .chat-input input {
       flex: 1;
-      padding: 0.5em;
-    }
-    .chat-input button {
-      padding: 0.5em 1em;
-      border: none;
-      cursor: pointer;
-      background-color: #007BFF;
-      color: white;
+      padding: 1em; /* Larger padding for taller input box */
+      font-size: 1em;
+      border: 1px solid #ccc;
       border-radius: 4px;
     }
-    footer {
-      text-align: center;
+    .chat-input button {
+      padding: 1em 1.5em; /* Taller + wider buttons */
+      border: none;
+      cursor: pointer;
+      background-color: #2980B9;
+      color: white;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 1em;
     }
+    .chat-input button:hover {
+      background-color: #1F618D;
+    }
+
+    /* Footer links */
     footer a {
       margin: 0 5px;
       text-decoration: none;
-      color: #666;
+      color: #fff;
+    }
+    footer a:hover {
+      color: #BDC3C7;
+    }
+
+    /* Clear Chat button style */
+    #clear-btn {
+      background-color: #c0392b; /* Reddish tone for "delete" action */
+    }
+    #clear-btn:hover {
+      background-color: #a93226;
+    }
+
+    /* Larger font & spacing for Example Prompts / Suggested Readings */
+    .prompts-list, .readings-list {
+      font-size: 1.2em;
+      line-height: 1.6;
+      margin-bottom: 2em;
     }
   </style>
 </head>
@@ -57,34 +186,52 @@
 
 <header>
   <nav>
-    <span class="logo">MyConstructionCyberRisk</span> |
-    <a href="index.html">Home</a>
-    <a href="chatbot.html">Cyber Risk ID</a>
-    <a href="quantification.html">Risk Quantification</a>
-    <a href="reports.html">Reports</a>
-    <a href="about.html">About</a>
+    <span class="logo">MyConstructionCyberRisk</span>
+    <div>
+      <a href="index.html">Home</a>
+      <a href="chatbot.html">Cyber Risk ID</a>
+      <a href="quantification.html">Risk Quantification</a>
+      <a href="reports.html">Reports</a>
+      <a href="about.html">About</a>
+    </div>
   </nav>
 </header>
 
 <div class="section">
   <h1>Cyber Risk Identification (Chatbot)</h1>
-  <div class="chat-container" id="chat-window">
-    <!-- Chat messages will appear here -->
-    <p><em>Ask me about cyber risks in construction projects...</em></p>
+  
+  <div class="chat-container">
+    <!-- Left Sidebar (narrower) -->
+    <div class="chat-sidebar">
+      <h3>Chat History</h3>
+      <ul>
+        <li><a href="#">Conversation 1</a></li>
+        <li><a href="#">Conversation 2</a></li>
+        <li><a href="#">Conversation 3</a></li>
+      </ul>
+    </div>
+    
+    <!-- Right/Main Chat Content -->
+    <div class="chat-content">
+      <div class="chat-window" id="chat-window">
+        <p><em>Ask me about cyber risks in construction projects...</em></p>
+      </div>
+      <div class="chat-input">
+        <input type="text" id="chat-input-box" placeholder="Type your question..." />
+        <button id="send-btn">SEND</button>
+        <button id="clear-btn">CLEAR CHAT</button>
+      </div>
+    </div>
   </div>
-  <div class="chat-input">
-    <input type="text" id="chat-input-box" placeholder="Type your question..." />
-    <button id="send-btn">SEND</button>
-  </div>
-
+  
   <h3>Example Prompts:</h3>
-  <ul>
+  <ul class="prompts-list">
     <li>"What are the common cyber risks for smart buildings?"</li>
     <li>"How can I mitigate phishing threats in my construction firm?"</li>
   </ul>
 
-  <h3>Suggested Readings & Reports</h3>
-  <ul>
+  <h3>Suggested Readings &amp; Reports</h3>
+  <ul class="readings-list">
     <li><a href="#">Smart Building Cybersecurity 101 (PDF)</a></li>
     <li><a href="#">Mitigating Common Phishing Attacks (Article)</a></li>
   </ul>
@@ -100,24 +247,35 @@
 
 <script>
   // Basic placeholder chatbot functionality
-  document.getElementById('send-btn').addEventListener('click', function() {
-    const inputBox = document.getElementById('chat-input-box');
-    const chatWindow = document.getElementById('chat-window');
+  const sendBtn = document.getElementById('send-btn');
+  const clearBtn = document.getElementById('clear-btn');
+  const inputBox = document.getElementById('chat-input-box');
+  const chatWindow = document.getElementById('chat-window');
+
+  sendBtn.addEventListener('click', function() {
     const userMessage = inputBox.value.trim();
-    if(userMessage) {
+    if (userMessage) {
+      // Display user message
       const userMsgElement = document.createElement('p');
       userMsgElement.textContent = "You: " + userMessage;
       chatWindow.appendChild(userMsgElement);
 
-      // Simple AI-like response (placeholder)
+      // Placeholder bot response
       const botMsgElement = document.createElement('p');
       botMsgElement.textContent = "Bot: This is a placeholder response about cyber risks.";
       chatWindow.appendChild(botMsgElement);
 
+      // Clear input & scroll
       inputBox.value = "";
       chatWindow.scrollTop = chatWindow.scrollHeight;
     }
   });
+
+  // Clear the chat window
+  clearBtn.addEventListener('click', function() {
+    chatWindow.innerHTML = "";
+  });
 </script>
+
 </body>
 </html>
