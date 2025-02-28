@@ -4,66 +4,164 @@
   <meta charset="UTF-8" />
   <title>Cyber Risk Quantification</title>
   <style>
+    /*
+      Match the header/footer style from the Cyber Risk Identification page:
+      - Dark navy header (#2C3E50)
+      - White text in header/footer
+      - Morandi-inspired .section styling with #EEEEEE background, #CABFB5 border
+    */
+
+    /* General body style */
     body {
       margin: 0;
       font-family: Arial, sans-serif;
+      background-color: #F2F2F2;  /* Light gray background */
+      color: #333;
     }
-    header, footer {
-      background-color: #f8f8f8;
+
+    /*********************
+     * Header & Nav
+     *********************/
+    header {
+      background-color: #2C3E50;
       padding: 1em;
+      color: #fff;
+      /* Removed text-align: center to eliminate forced centering */
+}
+
+    header nav {
+      display: flex;
+      align-items: center;
+      /* Removed margin: 0 auto; and max-width to remove left margin and align everything to the left */
+}
+
+
+header nav .logo {
+  margin-right: auto; /* Logo stays on the left */
+}
+
+.nav-links {
+  display: flex;
+  gap: 10px;
+}
+
+.nav-links a {
+  margin: 0 5px;
+}
+
+
+    .logo {
+      font-weight: bold;
+      color: #fff; /* White text for the logo */
     }
+
     nav a {
       margin: 0 10px;
       text-decoration: none;
-      color: #333;
+      color: #fff;  /* White text on dark navy */
     }
+    nav a:hover {
+      color: #BDC3C7; /* Lighter gray on hover */
+    }
+
+    /*********************
+     * Section Container
+     *********************/
     .section {
+      background-color: #EEEEEE; /* Morandi-inspired light background */
+      margin: 2em;
       padding: 2em;
+      border-radius: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      border: 2px solid #CABFB5; /* Dusty neutral border */
     }
+
+    /* Indentation for each question */
     .form-group {
       margin-bottom: 1em;
+      margin-left: 2em; /* Indent each risk factor */
     }
+
     label {
       display: block;
       margin-bottom: 0.5em;
+      font-weight: bold;
     }
-    input[type="text"], select {
-      width: 100%;
+
+    /* Input/Select Elements */
+    .form-group select,
+    .form-group input[type="text"] {
+      width: 300px; /* fixed width for uniformity */
       padding: 0.5em;
+      border: 1px solid #CCC;
+      border-radius: 4px;
     }
+
+    /* Button Styles */
     button {
       padding: 0.75em 1.5em;
       border: none;
       cursor: pointer;
-      background-color: #007BFF;
+      background-color: #2980B9; /* Bright blue accent */
       color: white;
       font-size: 1em;
       border-radius: 4px;
     }
+    button:hover {
+      background-color: #1F618D; /* Darker blue on hover */
+    }
+
+    /* Results Container */
     .results-container {
       margin-top: 2em;
-      padding: 1em;
-      background-color: #f0f8ff;
-      border: 1px solid #ccc;
-      display: none; /* Hidden by default, will show after calculation */
+      padding: 2em;
+      background-color: #EEEEEE; /* match the main .section style */
+      border: 2px solid #CABFB5;
+      border-radius: 15px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      display: none; /* Hidden by default */
     }
+
+    /* Individual Risk Result Boxes */
     .risk-result {
-      border: 1px solid #ccc;
+      border: 1px solid #CCC;
       padding: 1em;
       margin-bottom: 1em;
-      border-radius: 4px;
-      background-color: #fff;
+      border-radius: 8px; /* Increase radius for a softer look */
+      background-color: #F5F5F5; /* Lighter grey background */
     }
     .risk-result h2 {
       margin-top: 0;
+      color: #34495E; /* Dark navy heading color */
     }
+
+    /* Category Title Bar */
+    .category-title {
+  background-color: #2C3E50;
+  color: #fff;
+  padding: 0.5em 1em;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+  border-left: 8px solid #2980B9;
+  border-radius: 4px;
+}
+
+    /*********************
+     * Footer
+     *********************/
     footer {
+      background-color: #2C3E50; /* Dark navy */
+      color: #fff;
       text-align: center;
+      padding: 1em;
     }
     footer a {
       margin: 0 5px;
       text-decoration: none;
-      color: #666;
+      color: #fff; /* White text */
+    }
+    footer a:hover {
+      color: #BDC3C7; /* Light gray on hover */
     }
   </style>
 </head>
@@ -71,12 +169,14 @@
 
 <header>
   <nav>
-    <span class="logo">MyConstructionCyberRisk</span> |
-    <a href="index.html">Home</a>
-    <a href="chatbot.html">Cyber Risk ID</a>
-    <a href="quantification.html">Risk Quantification</a>
-    <a href="reports.html">Reports</a>
-    <a href="about.html">About</a>
+    <span class="logo">MyConstructionCyberRisk</span>
+    <div class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="chatbot.html">Cyber Risk ID</a>
+      <a href="quantification.html">Risk Quantification</a>
+      <a href="reports.html">Reports</a>
+      <a href="about.html">About</a>
+    </div>
   </nav>
 </header>
 
@@ -85,27 +185,622 @@
   <p>Please fill in the following 46 features for your construction project to calculate the risk scores for five threat types:</p>
   
   <form id="risk-form">
-    <!-- For brevity, only a few features are shown. Replicate as needed. -->
+    
+    <!-- ======================
+         Category 1: Overall project information
+         7 questions
+         ====================== -->
+    <h2 class="category-title">Category 1: Overall Project Information</h2>
+    
     <div class="form-group">
-      <label for="feature1">Feature 1 (Example only):</label>
-      <select id="feature1" name="feature1">
+      <label for="q1_1">1.1 What is the country of the project? (Select a continent)</label>
+      <select id="q1_1" name="q1_1">
         <option value="">--Select--</option>
-        <option value="low">Low</option>
-        <option value="medium">Medium</option>
-        <option value="high">High</option>
+        <option value="asia">Asia</option>
+        <option value="europe">Europe</option>
+        <option value="africa">Africa</option>
+        <option value="north_america">North America</option>
+        <option value="south_america">South America</option>
+        <option value="antarctica">Antarctica</option>
+        <option value="oceania">Oceania</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="q1_2">1.2 What is the project budget?</label>
+      <select id="q1_2" name="q1_2">
+        <option value="">--Select--</option>
+        <option value="<=100k"><= $100,000</option>
+        <option value="100k-500k">$100,000 - $500,000</option>
+        <option value="500k-1m">$500,000 - $1 million</option>
+        <option value="1m-5m">$1 million - $5 million</option>
+        <option value=">5m">> $5 million</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q1_3">1.3 What is the percentage of the total project budget for cybersecurity management?</label>
+      <select id="q1_3" name="q1_3">
+        <option value="">--Select--</option>
+        <option value="<=1%"><= 1%</option>
+        <option value="1%-2%">1% - 2%</option>
+        <option value="2%-3%">2% - 3%</option>
+        <option value="3%-4%">3% - 4%</option>
+        <option value="4%-5%">4% - 5%</option>
+        <option value=">5%">> 5%</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q1_4">1.4 What is the project duration?</label>
+      <select id="q1_4" name="q1_4">
+        <option value="">--Select--</option>
+        <option value="<=3_months"><= 3 months</option>
+        <option value="3-6_months">3 - 6 months</option>
+        <option value="6-12_months">6 - 12 months</option>
+        <option value="12-24_months">12 - 24 months</option>
+        <option value=">24_months">> 24 months</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q1_5">1.5 What is the total number of people involved in the project (labor excluded)?</label>
+      <select id="q1_5" name="q1_5">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="51-100">51 - 100</option>
+        <option value="101-200">101 - 200</option>
+        <option value="201-300">201 - 300</option>
+        <option value="301-400">301 - 400</option>
+        <option value=">400">> 400</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="q1_6">1.6 What is the project type?</label>
+      <select id="q1_6" name="q1_6">
+        <option value="">--Select--</option>
+        <option value="transportation">Transportation Infrastructure Projects</option>
+        <option value="government">Government Projects</option>
+        <option value="healthcare">Healthcare Projects</option>
+        <option value="large_commercial">Large-Scale Commercial Projects</option>
+        <option value="residential">Residential Projects</option>
+        <option value="other">Other types</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q1_7">1.7 Whether there is a dedicated cybersecurity legal team for the project?</label>
+      <select id="q1_7" name="q1_7">
+        <option value="">--Select--</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+        <option value="unsure">Unsure</option>
+      </select>
+    </div>
+
+    <!-- ======================
+         Category 2: Project structure
+         18 questions
+         ====================== -->
+    <h2 class="category-title">Category 2: Project Structure</h2>
+
+    <div class="form-group">
+      <label for="q2_1">2.1 What is the project delivery method?</label>
+      <select id="q2_1" name="q2_1">
+        <option value="">--Select--</option>
+        <option value="dbb">Design-Bid-Build (DBB)</option>
+        <option value="db">Design-Build (DB)</option>
+        <option value="cmar">Construction Manager at Risk (CMAR)</option>
+        <option value="cmmp">Construction Management Multi-Prime (CMMP)</option>
+        <option value="ppp">Public-Private Partnership (PPP or P3)</option>
+        <option value="ipd">Integrated Project Delivery (IPD)</option>
+        <option value="dbom">Design/Build/Operate/Maintain (DBOM)</option>
+        <option value="other">Other types</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <p><strong>2.2 What is the number of sub-teams at different layers of the project?</strong></p>
+      <p>For each layer, select one:</p>
+    </div>
+
+    <div class="form-group">
+      <label for="q2_2_1">Layer 1 sub-teams:</label>
+      <select id="q2_2_1" name="q2_2_1">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
       </select>
     </div>
     <div class="form-group">
-      <label for="feature2">Feature 2 (Example only):</label>
-      <input type="text" id="feature2" name="feature2" placeholder="Enter details" />
+      <label for="q2_2_2">Layer 2 sub-teams:</label>
+      <select id="q2_2_2" name="q2_2_2">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
+      </select>
     </div>
-    <!-- ... Repeat for all 46 features ... -->
+    <div class="form-group">
+      <label for="q2_2_3">Layer 3 sub-teams:</label>
+      <select id="q2_2_3" name="q2_2_3">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_2_4">Layer 4 sub-teams:</label>
+      <select id="q2_2_4" name="q2_2_4">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_2_5">Layer 5 sub-teams:</label>
+      <select id="q2_2_5" name="q2_2_5">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_2_6">Layer 6 sub-teams:</label>
+      <select id="q2_2_6" name="q2_2_6">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_2_7">Layer 7 sub-teams:</label>
+      <select id="q2_2_7" name="q2_2_7">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_2_8">Layer 8 sub-teams:</label>
+      <select id="q2_2_8" name="q2_2_8">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value=">40">> 40</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <p><strong>2.3 What is the number of communication channels at different layers in the project?</strong></p>
+      <p>For each layer, select one:</p>
+    </div>
+
+    <div class="form-group">
+      <label for="q2_3_1">Layer 1 communication channels:</label>
+      <select id="q2_3_1" name="q2_3_1">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_3_2">Layer 2 communication channels:</label>
+      <select id="q2_3_2" name="q2_3_2">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_3_3">Layer 3 communication channels:</label>
+      <select id="q2_3_3" name="q2_3_3">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_3_4">Layer 4 communication channels:</label>
+      <select id="q2_3_4" name="q2_3_4">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_3_5">Layer 5 communication channels:</label>
+      <select id="q2_3_5" name="q2_3_5">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_3_6">Layer 6 communication channels:</label>
+      <select id="q2_3_6" name="q2_3_6">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_3_7">Layer 7 communication channels:</label>
+      <select id="q2_3_7" name="q2_3_7">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label for="q2_3_8">Layer 8 communication channels:</label>
+      <select id="q2_3_8" name="q2_3_8">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="<=100"><= 100</option>
+        <option value="<=150"><= 150</option>
+        <option value="<=200"><= 200</option>
+        <option value="<250">< 250</option>
+        <option value="<=300"><= 300</option>
+        <option value=">300">> 300</option>
+        <option value="na">N/A</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q2_4">2.4 What is the percentage of teams overlapping in different projects?</label>
+      <select id="q2_4" name="q2_4">
+        <option value="">--Select--</option>
+        <option value="<=20%"><= 20%</option>
+        <option value="21-40%">21% - 40%</option>
+        <option value="41-60%">41% - 60%</option>
+        <option value="61-80%">61% - 80%</option>
+        <option value="81-100%">81% - 100%</option>
+      </select>
+    </div>
+
+    <!-- ======================
+         Category 3: IT factors
+         9 questions
+         ====================== -->
+    <h2 class="category-title">Category 3: IT Factors</h2>
     
+    <div class="form-group">
+      <label for="q3_1">3.1 What is the scale of your company?</label>
+      <select id="q3_1" name="q3_1">
+        <option value="">--Select--</option>
+        <option value="<=30"><= 30</option>
+        <option value="31-60">31 - 60</option>
+        <option value="61-100">61 - 100</option>
+        <option value="101-150">101 - 150</option>
+        <option value=">150">> 150</option>
+      </select>
+    </div>
+    
+    <div class="form-group">
+      <label for="q3_2">3.2 What is the phase of the construction project when your company is involved?</label>
+      <select id="q3_2" name="q3_2">
+        <option value="">--Select--</option>
+        <option value="planning_bidding">Planning and Bidding phase</option>
+        <option value="design">Design phase</option>
+        <option value="construction">Construction phase</option>
+        <option value="maintenance_operation">Maintenance &amp; Operation phase</option>
+        <option value="demolition">Demolition phase</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q3_3">3.3 Is there a dedicated IT team for the project?</label>
+      <select id="q3_3" name="q3_3">
+        <option value="">--Select--</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+        <option value="unsure">Unsure</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q3_4">3.4 What is the total number of critical digital assets?</label>
+      <select id="q3_4" name="q3_4">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="51-200">51 - 200</option>
+        <option value="201-400">201 - 400</option>
+        <option value="401-600">401 - 600</option>
+        <option value=">600">> 600</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q3_5">3.5 What is the total number of user endpoints of digital devices for the project?</label>
+      <select id="q3_5" name="q3_5">
+        <option value="">--Select--</option>
+        <option value="<=50"><= 50</option>
+        <option value="51-200">51 - 200</option>
+        <option value="201-400">201 - 400</option>
+        <option value="401-600">401 - 600</option>
+        <option value=">600">> 600</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q3_6">3.6 What is the percentage of digital devices with firewalls or intrusion detection systems involved in the project?</label>
+      <select id="q3_6" name="q3_6">
+        <option value="">--Select--</option>
+        <option value="<=20%"><= 20%</option>
+        <option value="21-40%">21% - 40%</option>
+        <option value="41-60%">41% - 60%</option>
+        <option value="61-80%">61% - 80%</option>
+        <option value="81-100%">81% - 100%</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q3_7">3.7 What is the network type used for the project?</label>
+      <select id="q3_7" name="q3_7">
+        <option value="">--Select--</option>
+        <option value="public">Public network</option>
+        <option value="private">Private network</option>
+        <option value="both">Both public and private network</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q3_8">3.8 What is the percentage of individuals who fail phishing tests after mandatory training?</label>
+      <select id="q3_8" name="q3_8">
+        <option value="">--Select--</option>
+        <option value="<=20%"><= 20%</option>
+        <option value="21-40%">21% - 40%</option>
+        <option value="41-60%">41% - 60%</option>
+        <option value="61-80%">61% - 80%</option>
+        <option value="81-100%">81% - 100%</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q3_9">3.9 What is the estimated Mean Time to Respond (MTTR) in hours?</label>
+      <select id="q3_9" name="q3_9">
+        <option value="">--Select--</option>
+        <option value="<=1hr">Within 1 hour</option>
+        <option value="1-4hrs">1 - 4 hours</option>
+        <option value="4-8hrs">4 - 8 hours</option>
+        <option value="8-24hrs">8 - 24 hours</option>
+        <option value=">24hrs">Above 24 hours</option>
+      </select>
+    </div>
+
+    <!-- ======================
+         Category 4: OT factors
+         5 questions
+         ====================== -->
+    <h2 class="category-title">Category 4: OT Factors</h2>
+
+    <div class="form-group">
+      <label for="q4_1">4.1 What is the total number of important OT equipment involved?</label>
+      <select id="q4_1" name="q4_1">
+        <option value="">--Select--</option>
+        <option value="<=30"><= 30</option>
+        <option value="31-60">31 - 60</option>
+        <option value="61-90">61 - 90</option>
+        <option value="91-120">91 - 120</option>
+        <option value="121-150">121 - 150</option>
+        <option value=">150">> 150</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q4_2">4.2 What is the level of physical access control mechanism to OT equipment?</label>
+      <select id="q4_2" name="q4_2">
+        <option value="">--Select--</option>
+        <option value="level1">Level 1</option>
+        <option value="level2">Level 2</option>
+        <option value="level3">Level 3</option>
+        <option value="level4">Level 4</option>
+        <option value="level5">Level 5</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q4_3">4.3 What is the percentage of OT equipment isolated from the project’s general network?</label>
+      <select id="q4_3" name="q4_3">
+        <option value="">--Select--</option>
+        <option value="<=20%"><= 20%</option>
+        <option value="21-40%">21% - 40%</option>
+        <option value="41-60%">41% - 60%</option>
+        <option value="61-80%">61% - 80%</option>
+        <option value="81-100%">81% - 100%</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q4_4">4.4 What is the average age of the important OT equipment (in years)?</label>
+      <select id="q4_4" name="q4_4">
+        <option value="">--Select--</option>
+        <option value="<=1"><= 1</option>
+        <option value="1-3">1 - 3</option>
+        <option value="4-7">4 - 7</option>
+        <option value="8-10">8 - 10</option>
+        <option value=">10">> 10</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q4_5">4.5 What is the level of authentication mechanism to access the HMI (Human Machine Interface)?</label>
+      <select id="q4_5" name="q4_5">
+        <option value="">--Select--</option>
+        <option value="level1">Level 1</option>
+        <option value="level2">Level 2</option>
+        <option value="level3">Level 3</option>
+        <option value="level4">Level 4</option>
+        <option value="level5">Level 5</option>
+      </select>
+    </div>
+
+    <!-- ======================
+         Category 5: Management and human factors
+         7 questions
+         ====================== -->
+    <h2 class="category-title">Category 5: Management and Human Factors</h2>
+
+    <div class="form-group">
+      <label for="q5_1">5.1 What is the average level of commitment to corporate governance, ethical practices and cybersecurity policy?</label>
+      <select id="q5_1" name="q5_1">
+        <option value="">--Select--</option>
+        <option value="level1">Level 1</option>
+        <option value="level2">Level 2</option>
+        <option value="level3">Level 3</option>
+        <option value="level4">Level 4</option>
+        <option value="level5">Level 5</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q5_2">5.2 What is the average frequency of security training per year?</label>
+      <select id="q5_2" name="q5_2">
+        <option value="">--Select--</option>
+        <option value="<=10"><= 10</option>
+        <option value="11-20">11 - 20</option>
+        <option value="21-30">21 - 30</option>
+        <option value="31-40">31 - 40</option>
+        <option value="41-50">41 - 50</option>
+        <option value=">50">> 50</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q5_3">5.3 Do you allow password reuse for any project-related software or accounts?</label>
+      <select id="q5_3" name="q5_3">
+        <option value="">--Select--</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q5_4">5.4 Does internet access within your construction project require Multi-Factor Authentication (MFA) or other methods (e.g. biometrics)?</label>
+      <select id="q5_4" name="q5_4">
+        <option value="">--Select--</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q5_5">5.5 What is the percentage of people who have access to sensitive information in the project?</label>
+      <select id="q5_5" name="q5_5">
+        <option value="">--Select--</option>
+        <option value="<=10%"><= 10%</option>
+        <option value="11-30%">11% - 30%</option>
+        <option value="31-50%">31% - 50%</option>
+        <option value="51-70%">51% - 70%</option>
+        <option value="71-90%">71% - 90%</option>
+        <option value="91-100%">91% - 100%</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q5_6">5.6 What is the average team member variability over a 3-month period?</label>
+      <select id="q5_6" name="q5_6">
+        <option value="">--Select--</option>
+        <option value="<=20%"><= 20%</option>
+        <option value="20%-40%">20% - 40%</option>
+        <option value="40%-60%">40% - 60%</option>
+        <option value="60%-80%">60% - 80%</option>
+        <option value="80%-100%">80% - 100%</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="q5_7">5.7 What is the average socioeconomic level of the people involved in the project?</label>
+      <select id="q5_7" name="q5_7">
+        <option value="">--Select--</option>
+        <option value="level1">Level 1</option>
+        <option value="level2">Level 2</option>
+        <option value="level3">Level 3</option>
+        <option value="level4">Level 4</option>
+        <option value="level5">Level 5</option>
+      </select>
+    </div>
+
+    <!-- Submit Button -->
     <button type="button" id="calculate-btn">Submit &amp; Calculate Risk</button>
   </form>
 
   <div class="results-container" id="results-container">
-    <!-- Each risk type's score and recommendations will go here -->
+    <!-- Each risk type's score and recommendations will be appended here by JS -->
   </div>
   
   <p><a href="index.html">&larr; Back to Dashboard</a></p>
@@ -119,10 +814,9 @@
 
 <script>
   document.getElementById('calculate-btn').addEventListener('click', function() {
-    // In a real scenario, you'd gather all 46 inputs here.
-    // For demonstration, we'll just generate random scores.
+    // Here, you would gather all 46 inputs.
+    // For demonstration, we'll just generate random scores for each risk type.
 
-    // Five types of risks
     const riskTypes = [
       "Ransomware",
       "Phishing",
@@ -131,43 +825,32 @@
       "Supply Chain Attack"
     ];
 
-    // We'll generate a random score (0 to 100) for each risk type.
-    // Then, assign a 'Low/Medium/High' label and placeholder recommendations.
     const resultsContainer = document.getElementById('results-container');
     resultsContainer.innerHTML = ""; // Clear previous results
     resultsContainer.style.display = "block";
 
-    riskTypes.forEach((type) => {
-      const score = Math.floor(Math.random() * 101); // 0 - 100
+    riskTypes.forEach(type => {
+      const score = Math.floor(Math.random() * 101); // random 0-100
       let level = "Low";
-      let recs = "Implement basic cybersecurity measures (e.g. strong passwords, firewalls).";
+      let recs = "Implement basic cybersecurity measures such as strong passwords, up-to-date firewalls, and regular software patches.";
 
-      if(score > 60 && score <= 80) {
+      if (score > 60 && score <= 80) {
         level = "Medium";
-        recs = "Increase employee training, conduct regular audits, implement advanced threat detection.";
-      } else if(score > 80) {
+        recs = "Enhance your cybersecurity posture: perform ongoing staff training on emerging threats, enforce multi-factor authentication, conduct regular vulnerability scans, and implement robust threat detection solutions.";
+      } else if (score > 80) {
         level = "High";
-        recs = "24/7 monitoring, advanced encryption, strict access controls, and dedicated cybersecurity staff.";
+        recs = "Adopt a comprehensive cybersecurity strategy: 24/7 security monitoring, advanced encryption for data at rest and in transit, strict role-based access controls, routine external security audits, and a dedicated incident response team.";
       }
 
-      // Create a container for each risk result
       const riskDiv = document.createElement('div');
       riskDiv.className = "risk-result";
-
-      riskDiv.innerHTML = `
-        <h2>${type} Risk</h2>
-        <p><strong>Score:</strong> ${score}%</p>
-        <p><strong>Level:</strong> ${level}</p>
-        <h3>Recommendations</h3>
-        <p>${recs}</p>
-      `;
-
+      riskDiv.innerHTML = `\n        <h2>${type} Risk</h2>\n        <p><strong>Score:</strong> ${score}%</p>\n        <p><strong>Level:</strong> ${level}</p>\n        <h3>Recommendations</h3>\n        <p>${recs}</p>\n      `;
       resultsContainer.appendChild(riskDiv);
     });
 
-    // Scroll into view to the results section
     resultsContainer.scrollIntoView();
   });
 </script>
+
 </body>
 </html>
