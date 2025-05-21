@@ -38,7 +38,7 @@ class NeuralNetwork2(nn.Module):
                 nn.init.zeros_(m.bias)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model_path = "/content/ransomware_model_entire.pth"
+model_path = "ransomware_model_entire.pth"
 model = torch.load(model_path, map_location=device)
 model.eval()  # set the model to evaluation mode
 

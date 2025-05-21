@@ -1,0 +1,51 @@
+/* Professional & Modern Custom Scrollbar */
+
+/* Chrome, Edge, Safari */
+::-webkit-scrollbar {
+  width: 8px;
+  background: #F3F4F6; /* subtle light gray */
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #6366F1 40%, #4F46E5 100%);
+  border-radius: 999px;
+  min-height: 40px;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.08);
+  border: 2px solid #F3F4F6;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #06B6D4 40%, #4F46E5 100%);
+}
+
+::-webkit-scrollbar-corner {
+  background: #F3F4F6;
+}
+
+/* App dark mode support (instant update) */
+body.dark-mode ::-webkit-scrollbar {
+  background: #232946;
+}
+body.dark-mode ::-webkit-scrollbar-thumb {
+  background: linear-gradient(135deg, #818CF8 40%, #6366F1 100%);
+  border: 2px solid #232946;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.12);
+  border-radius: 999px;
+}
+body.dark-mode ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(135deg, #22D3EE 40%, #6366F1 100%);
+}
+body.dark-mode ::-webkit-scrollbar-corner {
+  background: #232946;
+}
+
+header {
+  background-color: #f8f8f8;
+  padding: 0;
+}
+nav {
+  padding: 1em;
+}
+
+
