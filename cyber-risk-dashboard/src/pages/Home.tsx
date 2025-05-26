@@ -4,6 +4,8 @@ import { styled } from '@mui/material/styles';
 import SecurityIcon from '@mui/icons-material/Security';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import ChatIcon from '@mui/icons-material/Chat';
+import React, { useRef, useEffect, useState } from 'react';
+import LinkedInIcon from '@mui/icons-material/LinkedIn';
 
 const AnimatedShapes = () => {
   return (
@@ -267,6 +269,228 @@ const SecondAnimatedShapes = () => {
   );
 };
 
+const ThirdAnimatedShapes = () => {
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        left: '-25%',
+        top: '20%',
+        width: '70%',
+        height: '60%',
+        overflow: 'hidden',
+        opacity: 0.35,
+      }}
+    >
+      <motion.svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 800 800"
+        initial="hidden"
+        animate="visible"
+      >
+        <defs>
+          <filter id="glowEffect3">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+
+        <motion.g
+          initial={{ rotate: 0 }}
+          animate={{ rotate: 180 }}
+          transition={{ duration: 30, repeat: Infinity, ease: "linear" }}
+        >
+          {/* Diamond pattern */}
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, index) => (
+            <motion.path
+              key={`diamond-${index}`}
+              d={`M400,300 L${400 + Math.cos(angle * Math.PI / 180) * 100},${300 + Math.sin(angle * Math.PI / 180) * 100} 
+                  L${400 + Math.cos((angle + 45) * Math.PI / 180) * 100},${300 + Math.sin((angle + 45) * Math.PI / 180) * 100} 
+                  L${400 + Math.cos((angle + 90) * Math.PI / 180) * 100},${300 + Math.sin((angle + 90) * Math.PI / 180) * 100} Z`}
+              fill="none"
+              stroke="#06B6D4"
+              strokeWidth="2"
+              filter="url(#glowEffect3)"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 2, delay: index * 0.2 }}
+            />
+          ))}
+
+          {/* Pulsing circles */}
+          {[0, 72, 144, 216, 288].map((angle, index) => (
+            <motion.circle
+              key={`pulse-${index}`}
+              cx={400 + Math.cos(angle * Math.PI / 180) * 120}
+              cy={300 + Math.sin(angle * Math.PI / 180) * 120}
+              r="8"
+              fill="none"
+              stroke="#06B6D4"
+              strokeWidth="2"
+              filter="url(#glowEffect3)"
+              initial={{ scale: 0 }}
+              animate={{ 
+                scale: [1, 1.5, 1],
+                opacity: [0.6, 1, 0.6]
+              }}
+              transition={{ 
+                duration: 3,
+                repeat: Infinity,
+                delay: index * 0.3
+              }}
+            />
+          ))}
+
+          {/* Zigzag lines */}
+          {[0, 120, 240].map((angle, index) => (
+            <motion.path
+              key={`zigzag-${index}`}
+              d={`M${400 + Math.cos(angle * Math.PI / 180) * 50},${300 + Math.sin(angle * Math.PI / 180) * 50} 
+                  L${400 + Math.cos((angle + 30) * Math.PI / 180) * 100},${300 + Math.sin((angle + 30) * Math.PI / 180) * 100}
+                  L${400 + Math.cos((angle + 60) * Math.PI / 180) * 50},${300 + Math.sin((angle + 60) * Math.PI / 180) * 50}
+                  L${400 + Math.cos((angle + 90) * Math.PI / 180) * 100},${300 + Math.sin((angle + 90) * Math.PI / 180) * 100}`}
+              fill="none"
+              stroke="#06B6D4"
+              strokeWidth="2"
+              filter="url(#glowEffect3)"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 2, delay: index * 0.4 }}
+            />
+          ))}
+        </motion.g>
+      </motion.svg>
+    </Box>
+  );
+};
+
+const FourthAnimatedShapes = () => {
+  return (
+    <Box
+      sx={{
+        position: 'absolute',
+        left: '0%',
+        top: '45%',
+        width: '85%',
+        height: '75%',
+        overflow: 'hidden',
+        opacity: 0.25,
+      }}
+    >
+      <motion.svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 800 800"
+        initial="hidden"
+        animate="visible"
+      >
+        <defs>
+          <filter id="glowEffect4">
+            <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+            <feMerge>
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+
+        <motion.g
+          initial={{ rotate: 0 }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: 45, repeat: Infinity, ease: "linear" }}
+        >
+          {/* Star pattern */}
+          {[0, 72, 144, 216, 288].map((angle, index) => (
+            <motion.path
+              key={`star-${index}`}
+              d={`M400,300 L${400 + Math.cos(angle * Math.PI / 180) * 150},${300 + Math.sin(angle * Math.PI / 180) * 150} 
+                  L${400 + Math.cos((angle + 36) * Math.PI / 180) * 75},${300 + Math.sin((angle + 36) * Math.PI / 180) * 75}
+                  L${400 + Math.cos((angle + 72) * Math.PI / 180) * 150},${300 + Math.sin((angle + 72) * Math.PI / 180) * 150} Z`}
+              fill="none"
+              stroke="#06B6D4"
+              strokeWidth="3.5"
+              filter="url(#glowEffect4)"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 2, delay: index * 0.2 }}
+            />
+          ))}
+
+          {/* Orbital dots */}
+          {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, index) => (
+            <motion.circle
+              key={`orbit-${index}`}
+              cx={400 + Math.cos(angle * Math.PI / 180) * 120}
+              cy={300 + Math.sin(angle * Math.PI / 180) * 120}
+              r="8"
+              fill="#06B6D4"
+              filter="url(#glowEffect4)"
+              initial={{ scale: 0 }}
+              animate={{ 
+                scale: [1, 1.5, 1],
+                opacity: [0.6, 1, 0.6]
+              }}
+              transition={{ 
+                duration: 2,
+                repeat: Infinity,
+                delay: index * 0.1
+              }}
+            />
+          ))}
+
+          {/* Spiral lines */}
+          {[0, 120, 240].map((angle, index) => (
+            <motion.path
+              key={`spiral-${index}`}
+              d={`M${400 + Math.cos(angle * Math.PI / 180) * 60},${300 + Math.sin(angle * Math.PI / 180) * 60} 
+                  Q${400 + Math.cos((angle + 60) * Math.PI / 180) * 120},${300 + Math.sin((angle + 60) * Math.PI / 180) * 120}
+                  ${400 + Math.cos((angle + 120) * Math.PI / 180) * 180},${300 + Math.sin((angle + 120) * Math.PI / 180) * 180}`}
+              fill="none"
+              stroke="#06B6D4"
+              strokeWidth="3.5"
+              filter="url(#glowEffect4)"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 2, delay: index * 0.3 }}
+            />
+          ))}
+
+          {/* Pulsing hexagons */}
+          {[0, 60, 120, 180, 240, 300].map((angle, index) => (
+            <motion.path
+              key={`hex-${index}`}
+              d={`M${400 + Math.cos(angle * Math.PI / 180) * 80},${300 + Math.sin(angle * Math.PI / 180) * 80} 
+                  L${400 + Math.cos((angle + 60) * Math.PI / 180) * 80},${300 + Math.sin((angle + 60) * Math.PI / 180) * 80}
+                  L${400 + Math.cos((angle + 120) * Math.PI / 180) * 80},${300 + Math.sin((angle + 120) * Math.PI / 180) * 80}
+                  L${400 + Math.cos((angle + 180) * Math.PI / 180) * 80},${300 + Math.sin((angle + 180) * Math.PI / 180) * 80}
+                  L${400 + Math.cos((angle + 240) * Math.PI / 180) * 80},${300 + Math.sin((angle + 240) * Math.PI / 180) * 80}
+                  L${400 + Math.cos((angle + 300) * Math.PI / 180) * 80},${300 + Math.sin((angle + 300) * Math.PI / 180) * 80} Z`}
+              fill="none"
+              stroke="#06B6D4"
+              strokeWidth="3.5"
+              filter="url(#glowEffect4)"
+              initial={{ scale: 0 }}
+              animate={{ 
+                scale: [1, 1.3, 1],
+                opacity: [0.7, 1, 0.7]
+              }}
+              transition={{ 
+                duration: 3,
+                repeat: Infinity,
+                delay: index * 0.2
+              }}
+            />
+          ))}
+        </motion.g>
+      </motion.svg>
+    </Box>
+  );
+};
+
 const HeroSection = styled(Box)(({ theme }) => ({
   background: 'linear-gradient(90deg, #4F46E5 0%, #06B6D4 100%)',
   color: 'white',
@@ -300,8 +524,15 @@ const NewsTicker = styled(Box)(({ theme }) => ({
   marginTop: theme.spacing(4),
 }));
 
+interface Module {
+  title: string;
+  description: string;
+  icon: React.ReactNode;
+  path: string;
+}
+
 const Home = () => {
-  const modules = [
+  const modules: Module[] = [
     {
       title: 'Cybersecurity Topic Modeling',
       description: 'Upload or paste text documents to discover hidden topics.',
@@ -327,6 +558,8 @@ const Home = () => {
       <HeroSection>
         <AnimatedShapes />
         <SecondAnimatedShapes />
+        <ThirdAnimatedShapes />
+        <FourthAnimatedShapes />
         <Box sx={{ maxWidth: '700px', mx: { xs: 2, md: 12 }, px: { xs: 2, md: 0 }, position: 'relative', zIndex: 1 }}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -354,35 +587,149 @@ const Home = () => {
 
       <Box sx={{ width: '100%', py: 8, px: { xs: 2, md: 4, lg: 8 }, boxSizing: 'border-box', maxWidth: '100vw', mx: 'auto' }}>
         <Typography variant="h3" component="h2" gutterBottom align="center">
-          Quick Overview of Cyber Risk
+          Cyber Risk
         </Typography>
-        <Grid container spacing={4} sx={{ mt: 2 }}>
-          {[
-            'Construction projects face heightened cybersecurity threats as digital tools and IoT devices proliferate.',
-            'Vulnerabilities in building management systems and project data can lead to costly disruptions or data breaches.',
-            'Phishing scams and ransomware attacks threaten timelines, finances, and reputations.',
-            'Large, complex supply chains amplify risks of unauthorized access.',
-          ].map((text, index) => (
-            <Grid item xs={12} md={6} key={index}>
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
+        <Box sx={{ maxWidth: '800px', mx: 'auto', mt: 4, mb: 8 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Typography variant="body1" paragraph align="center" sx={{ fontSize: '1.1rem', lineHeight: 1.6, textAlign: 'center', mb: 4 }}>
+              As construction projects become increasingly digitized, they face sophisticated cybersecurity threats. From Building Information Modeling (BIM) systems to IoT-enabled equipment, each digital touchpoint represents a potential vulnerability that malicious actors could exploit, leading to operational disruptions, financial losses, and compromised safety.
+            </Typography>
+            <Typography variant="body1" paragraph align="center" sx={{ fontSize: '1.1rem', lineHeight: 1.6, textAlign: 'center' }}>
+              The industry's growing reliance on cloud-based collaboration tools and connected devices amplifies security risks. Without proper safeguards, unauthorized access to project data, intellectual property, and operational systems could have severe consequences for project timelines, costs, and reputations.
+            </Typography>
+          </motion.div>
+        </Box>
+
+        <Typography variant="h3" component="h2" gutterBottom align="center" sx={{ mt: 8 }}>
+          Our Platform
+        </Typography>
+        <Box sx={{ maxWidth: '800px', mx: 'auto', mt: 4, mb: 8 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Typography variant="body1" paragraph align="center" sx={{ fontSize: '1.1rem', lineHeight: 1.6, textAlign: 'center', mb: 4 }}>
+              Our comprehensive cyber risk management platform empowers construction professionals to proactively identify, assess, and mitigate cybersecurity threats. Through advanced AI-driven analysis and real-time monitoring, we provide actionable insights to protect your digital infrastructure and project data.
+            </Typography>
+            <Typography variant="body1" paragraph align="center" sx={{ fontSize: '1.1rem', lineHeight: 1.6, textAlign: 'center' }}>
+              With features like automated risk assessment, threat modeling, and customized security recommendations, our platform helps you maintain robust cybersecurity practices throughout your project lifecycle, ensuring the safety and integrity of your construction operations.
+            </Typography>
+          </motion.div>
+        </Box>
+
+        <Typography variant="h3" component="h2" gutterBottom align="center" sx={{ mt: 8 }}>
+          Our Lab
+        </Typography>
+        <Box sx={{ maxWidth: '800px', mx: 'auto', mt: 4, mb: 8 }}>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <Typography variant="h4" component="h3" gutterBottom align="center" color="primary">
+              S.M.A.R.T. Construction Research Group
+            </Typography>
+            <Typography variant="body1" paragraph align="center" sx={{ fontSize: '1.1rem', lineHeight: 1.6, textAlign: 'center' }}>
+              Our goal is to generate high-impact scholarly work while ensuring a pragmatic viewpoint to guarantee a successful integration in the way we manage the planning, design, construction, operation and maintenance, inspection, retrofit, and repair of the infrastructure and communities of the future.
+            </Typography>
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+              <Button
+                variant="outlined"
+                color="primary"
+                href="https://www.linkedin.com/company/smart-construction-research-group/"
+                target="_blank"
+                rel="noopener noreferrer"
+                startIcon={<LinkedInIcon />}
               >
-                <Typography variant="body1" paragraph>
-                  {text}
-                </Typography>
-              </motion.div>
-            </Grid>
-          ))}
-        </Grid>
+                Visit Our LinkedIn
+              </Button>
+            </Box>
+          </motion.div>
+        </Box>
+
+        <Typography variant="h3" component="h2" gutterBottom align="center" sx={{ mt: 8 }}>
+          Our Collaborators
+        </Typography>
+        <Box sx={{ position: 'relative', width: '100%', height: 200, overflow: 'hidden', mt: 4 }}>
+          {/* Seamless infinite carousel */}
+          <Box
+            sx={{
+              width: '100%',
+              height: '100%',
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            {(() => {
+              const companies = [
+                { img: '/ALEC_Logo.jfif', name: 'ALEC', url: 'https://www.alec.ae/' },
+                { img: '/Petrochina_logo.svg', name: 'PetroChina', url: 'https://www.petrochina.com.cn/' },
+                { img: '/China_State_Construction_Engineering_Corporation_logo.svg.png', name: 'China State Construction Engineering Corporation', url: 'https://english.cscec.com/' },
+              ];
+              // Use state and ref to measure width
+              const [width, setWidth] = useState(0);
+              const rowRef = useRef<HTMLDivElement>(null);
+              useEffect(() => {
+                if (rowRef.current) {
+                  setWidth(rowRef.current.offsetWidth / 2);
+                }
+              }, []);
+              return (
+                <motion.div
+                  ref={rowRef}
+                  style={{
+                    display: 'flex',
+                    gap: '100px',
+                    alignItems: 'center',
+                    position: 'absolute',
+                    willChange: 'transform',
+                  }}
+                  animate={width ? { x: [0, -width] } : false}
+                  transition={width ? {
+                    x: {
+                      repeat: Infinity,
+                      repeatType: 'loop',
+                      duration: 12,
+                      ease: 'linear',
+                    },
+                  } : {}}
+                >
+                  {Array(10).fill(companies).flat().map((company, index) => (
+                    <motion.div
+                      key={index}
+                      whileHover={{ scale: 1.1 }}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => window.open(company.url, '_blank')}
+                    >
+                      <Box
+                        component="img"
+                        src={company.img}
+                        alt={company.name}
+                        sx={{
+                          height: 100,
+                          objectFit: 'contain',
+                          transition: 'transform 0.3s ease-in-out',
+                        }}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              );
+            })()}
+          </Box>
+        </Box>
 
         <Typography variant="h3" component="h2" gutterBottom align="center" sx={{ mt: 8 }}>
           Our Modules
         </Typography>
-        <Grid container spacing={2} sx={{ mt: 2 }}>
+        <Grid container spacing={2} sx={{ mt: 2 }} justifyContent="center">
           {modules.map((module, index) => (
-            <Grid item xs={12} md={4} key={index}>
+            <Grid item xs={12} sm={6} md={4} key={index}>
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}

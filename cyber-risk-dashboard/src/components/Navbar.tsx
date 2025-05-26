@@ -17,6 +17,7 @@ import {
   Tooltip,
   Switch,
   FormControlLabel,
+  Divider,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import SecurityIcon from '@mui/icons-material/Security';
@@ -70,6 +71,7 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
           </ListItemButton>
         </ListItem>
       ))}
+      <Divider sx={{ my: 1 }} />
       <ListItem>
         <FormControlLabel
           control={
@@ -81,6 +83,37 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
           }
           label={mode === 'dark' ? 'Dark Mode' : 'Light Mode'}
         />
+      </ListItem>
+      <Divider sx={{ my: 1 }} />
+      <ListItem>
+        <Button
+          fullWidth
+          variant="outlined"
+          component={RouterLink}
+          to="/login"
+          onClick={handleDrawerToggle}
+          sx={{ 
+            fontSize: '0.75rem',
+            textTransform: 'none',
+          }}
+        >
+          Login
+        </Button>
+      </ListItem>
+      <ListItem>
+        <Button
+          fullWidth
+          variant="contained"
+          component={RouterLink}
+          to="/signup"
+          onClick={handleDrawerToggle}
+          sx={{ 
+            fontSize: '0.75rem',
+            textTransform: 'none',
+          }}
+        >
+          Sign Up
+        </Button>
       </ListItem>
     </List>
   );
@@ -131,7 +164,12 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
                   component={RouterLink}
                   to={item.path}
                   color="inherit"
-                  sx={{ fontSize: '0.85rem', minWidth: 0, px: 0.75 }}
+                  sx={{ 
+                    fontSize: '0.75rem', 
+                    minWidth: 0, 
+                    px: 0.5,
+                    textTransform: 'none',
+                  }}
                 >
                   {item.name}
                 </Button>
@@ -153,9 +191,49 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
             </Box>
           )}
 
-          {/* Right logo */}
-          <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 56 }}>
-            <StyledLogo src="/logo3.png" alt="SMART Group Logo" style={{ marginLeft: 12 }} />
+          {/* Right section with login/signup and logo */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {!isMobile && (
+              <>
+                <Button
+                  component={RouterLink}
+                  to="/login"
+                  color="inherit"
+                  variant="outlined"
+                  size="small"
+                  sx={{ 
+                    fontSize: '0.75rem',
+                    minWidth: 0,
+                    px: 1,
+                    borderColor: 'inherit',
+                    '&:hover': {
+                      borderColor: 'primary.main',
+                      color: 'primary.main',
+                    },
+                    textTransform: 'none',
+                  }}
+                >
+                  Login
+                </Button>
+                <Button
+                  component={RouterLink}
+                  to="/signup"
+                  variant="contained"
+                  size="small"
+                  sx={{ 
+                    fontSize: '0.75rem',
+                    minWidth: 0,
+                    px: 1,
+                    textTransform: 'none',
+                  }}
+                >
+                  Sign Up
+                </Button>
+              </>
+            )}
+            <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 56 }}>
+              <StyledLogo src="/logo3.png" alt="SMART Group Logo" style={{ marginLeft: 12 }} />
+            </Box>
           </Box>
         </Toolbar>
       </AppBar>

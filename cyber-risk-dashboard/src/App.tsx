@@ -7,8 +7,11 @@ import TopicModeling from './pages/TopicModeling';
 import RiskIdentification from './pages/RiskIdentification';
 import RiskQuantification from './pages/RiskQuantification';
 import Reports from './pages/Reports';
+import ProjectDetails from './pages/ProjectDetails';
 import About from './pages/About';
 import Contact from './pages/Contact';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
 
 // Professional color palette
 const colors = {
@@ -126,11 +129,14 @@ function App() {
         <Navbar onToggleColorMode={toggleColorMode} mode={mode} />
         <Box sx={{ pt: { xs: 8, sm: 9 } }}>
           <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="/" element={<Home />} />
             <Route path="/topic-modeling" element={<TopicModeling />} />
             <Route path="/risk-identification" element={<RiskIdentification />} />
             <Route path="/risk-quantification" element={<RiskQuantification />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/project-details/:projectId" element={<ProjectDetails />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
           </Routes>
