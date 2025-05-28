@@ -1,11 +1,12 @@
 import { Box, Container, Typography, Button, Card, CardContent, CardActions, Grid } from '@mui/material';
-import { motion } from 'framer-motion';
+import { motion, useScroll, useTransform } from 'framer-motion';
 import { styled } from '@mui/material/styles';
 import SecurityIcon from '@mui/icons-material/Security';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import ChatIcon from '@mui/icons-material/Chat';
 import React, { useRef, useEffect, useState } from 'react';
 import LinkedInIcon from '@mui/icons-material/LinkedIn';
+import LanguageIcon from '@mui/icons-material/Language';
 
 const AnimatedShapes = () => {
   return (
@@ -151,7 +152,7 @@ const SecondAnimatedShapes = () => {
         width: '90%',
         height: '100%',
         overflow: 'hidden',
-        opacity: 0.45,
+        opacity: 0.95,
       }}
     >
       <motion.svg
@@ -491,6 +492,245 @@ const FourthAnimatedShapes = () => {
   );
 };
 
+const BackgroundElements = () => {
+  const { scrollY } = useScroll();
+  
+  const y1 = useTransform(scrollY, [0, 3000], [0, -300]);
+  const y2 = useTransform(scrollY, [0, 3000], [0, -600]);
+  const y3 = useTransform(scrollY, [0, 3000], [0, -900]);
+  const y4 = useTransform(scrollY, [0, 3000], [0, -450]);
+  const y5 = useTransform(scrollY, [0, 3000], [0, -750]);
+
+  // Enhanced vertical line component
+  const VerticalLine = ({ left, top, height, gradient, delay, scrollY }: { 
+    left: string; 
+    top: string; 
+    height: number;
+    gradient: string;
+    delay: number;
+    scrollY: any;
+  }) => (
+    <motion.div
+      style={{
+        position: 'absolute',
+        left,
+        top,
+        y: scrollY,
+      }}
+      initial={{ opacity: 0, scale: 0.8 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ 
+        duration: 1.2,
+        delay,
+        ease: "easeOut"
+      }}
+    >
+      <Box
+        sx={{
+          width: '3px',
+          height: `${height}px`,
+          background: gradient,
+          borderRadius: '4px',
+          boxShadow: '0 0 15px rgba(6, 182, 212, 0.15)',
+          '&::before': {
+            content: '""',
+            position: 'absolute',
+            top: '-10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: 'rgba(6, 182, 212, 1)',
+            boxShadow: '0 0 10px rgba(6, 182, 212, 0.5)',
+          },
+          '&::after': {
+            content: '""',
+            position: 'absolute',
+            bottom: '-10px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '8px',
+            height: '8px',
+            borderRadius: '50%',
+            background: 'rgba(6, 182, 212, 1)',
+            boxShadow: '0 0 10px rgba(6, 182, 212, 0.5)',
+          }
+        }}
+      />
+    </motion.div>
+  );
+  
+  // Define gradients
+  const gradients = {
+    blue: 'linear-gradient(180deg, #4F46E5 0%, #06B6D4 50%, #4F46E5 100%)',
+    cyan: 'linear-gradient(180deg, #06B6D4 0%, #0EA5E9 50%, #06B6D4 100%)',
+    indigo: 'linear-gradient(180deg, #4F46E5 0%, #6366F1 50%, #4F46E5 100%)',
+  };
+  
+  return (
+    <Box sx={{ 
+      position: 'absolute', 
+      width: '100%', 
+      height: '100%', 
+      overflow: 'hidden',
+      pointerEvents: 'none',
+      zIndex: 0
+    }}>
+      {/* Left side vertical lines */}
+      <VerticalLine left="12%" top="5%" height={300} gradient={gradients.blue} delay={0.2} scrollY={y1} />
+      <VerticalLine left="15%" top="25%" height={250} gradient={gradients.cyan} delay={0.3} scrollY={y2} />
+      <VerticalLine left="10%" top="50%" height={280} gradient={gradients.indigo} delay={0.4} scrollY={y3} />
+
+      {/* Right side vertical lines */}
+      <VerticalLine left="85%" top="8%" height={260} gradient={gradients.indigo} delay={0.6} scrollY={y2} />
+      <VerticalLine left="88%" top="35%" height={240} gradient={gradients.blue} delay={0.7} scrollY={y3} />
+      <VerticalLine left="82%" top="60%" height={300} gradient={gradients.cyan} delay={0.8} scrollY={y1} />
+
+      {/* Existing background shapes with reduced opacity */}
+      {/* Left side elements */}
+      <motion.div style={{ position: 'absolute', left: '5%', top: '20%', y: y1 }}>
+        <Box sx={{ 
+          width: '80px', height: '80px',
+          borderRadius: '20px',
+          backgroundColor: 'rgba(0, 0, 0, 0.02)', // Reduced opacity
+          transform: 'rotate(45deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', left: '10%', top: '60%', y: y2 }}>
+        <Box sx={{ 
+          width: '120px', height: '120px',
+          border: '20px solid rgba(0, 0, 0, 0.02)',
+          borderRadius: '50%'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', left: '3%', top: '85%', y: y4 }}>
+        <Box sx={{ 
+          width: '90px', height: '90px',
+          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+          clipPath: 'polygon(50% 0%, 100% 100%, 0% 100%)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', left: '15%', top: '35%', y: y5 }}>
+        <Box sx={{ 
+          width: '40px', height: '40px',
+          border: '8px solid rgba(0, 0, 0, 0.02)',
+          transform: 'rotate(30deg)'
+        }} />
+      </motion.div>
+
+      {/* Right side elements */}
+      <motion.div style={{ position: 'absolute', right: '8%', top: '30%', y: y3 }}>
+        <Box sx={{ 
+          width: '150px', height: '150px',
+          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+          borderRadius: '30px',
+          transform: 'rotate(-15deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', right: '15%', top: '70%', y: y1 }}>
+        <Box sx={{ 
+          width: '60px', height: '60px',
+          backgroundColor: 'rgba(0, 0, 0, 0.03)',
+          clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)'
+        }} />
+      </motion.div>
+
+      {/* Additional floating elements */}
+      <motion.div style={{ position: 'absolute', left: '20%', top: '40%', y: y2 }}>
+        <Box sx={{ 
+          width: '40px', height: '40px',
+          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+          borderRadius: '8px',
+          transform: 'rotate(30deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', right: '25%', top: '50%', y: y3 }}>
+        <Box sx={{ 
+          width: '100px', height: '2px',
+          backgroundColor: 'rgba(0, 0, 0, 0.03)',
+          transform: 'rotate(-45deg)'
+        }} />
+      </motion.div>
+
+      {/* New Additional Elements */}
+      <motion.div style={{ position: 'absolute', left: '28%', top: '75%', y: y4 }}>
+        <Box sx={{ 
+          width: '70px', height: '70px',
+          border: '15px solid rgba(0, 0, 0, 0.015)',
+          borderRadius: '50%',
+          transform: 'rotate(15deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', right: '30%', top: '25%', y: y5 }}>
+        <Box sx={{ 
+          width: '85px', height: '85px',
+          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+          clipPath: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+          transform: 'rotate(75deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', left: '35%', top: '15%', y: y2 }}>
+        <Box sx={{ 
+          width: '120px', height: '3px',
+          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+          transform: 'rotate(60deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', right: '12%', top: '85%', y: y3 }}>
+        <Box sx={{ 
+          width: '50px', height: '50px',
+          backgroundColor: 'rgba(0, 0, 0, 0.025)',
+          borderRadius: '12px',
+          transform: 'rotate(-30deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', left: '8%', top: '92%', y: y1 }}>
+        <Box sx={{ 
+          width: '30px', height: '30px',
+          border: '6px solid rgba(0, 0, 0, 0.02)',
+          transform: 'rotate(45deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', right: '35%', top: '65%', y: y4 }}>
+        <Box sx={{ 
+          width: '90px', height: '90px',
+          backgroundColor: 'rgba(0, 0, 0, 0.015)',
+          clipPath: 'polygon(25% 0%, 100% 0%, 75% 100%, 0% 100%)',
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', left: '40%', top: '55%', y: y5 }}>
+        <Box sx={{ 
+          width: '60px', height: '60px',
+          border: '12px solid rgba(0, 0, 0, 0.02)',
+          borderRadius: '50%',
+          transform: 'rotate(-15deg)'
+        }} />
+      </motion.div>
+
+      <motion.div style={{ position: 'absolute', right: '18%', top: '10%', y: y2 }}>
+        <Box sx={{ 
+          width: '40px', height: '40px',
+          backgroundColor: 'rgba(0, 0, 0, 0.02)',
+          clipPath: 'polygon(50% 0%, 100% 100%, 0% 100%)',
+          transform: 'rotate(180deg)'
+        }} />
+      </motion.div>
+    </Box>
+  );
+};
+
 const HeroSection = styled(Box)(({ theme }) => ({
   background: 'linear-gradient(90deg, #4F46E5 0%, #06B6D4 100%)',
   color: 'white',
@@ -505,6 +745,129 @@ const HeroSection = styled(Box)(({ theme }) => ({
   overflow: 'hidden',
 }));
 
+const AdditionalHeroShapes = () => {
+  return (
+    <>
+      {/* Floating hexagon */}
+      <motion.div
+        style={{
+          position: 'absolute',
+          left: '25%',
+          top: '15%',
+          zIndex: 0,
+        }}
+        animate={{
+          y: [0, -20, 0],
+          rotate: [0, 15, 0],
+        }}
+        transition={{
+          duration: 5,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+      >
+        <Box
+          sx={{
+            width: '60px',
+            height: '60px',
+            background: 'rgba(255, 255, 255, 0.1)',
+            clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)',
+            backdropFilter: 'blur(8px)',
+          }}
+        />
+      </motion.div>
+
+      {/* Glowing circle */}
+      <motion.div
+        style={{
+          position: 'absolute',
+          right: '28%',
+          top: '65%',
+          zIndex: 0,
+        }}
+        animate={{
+          scale: [1, 1.2, 1],
+          opacity: [0.5, 0.8, 0.5],
+        }}
+        transition={{
+          duration: 4,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+      >
+        <Box
+          sx={{
+            width: '40px',
+            height: '40px',
+            borderRadius: '50%',
+            background: 'radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%)',
+            border: '2px solid rgba(255,255,255,0.1)',
+            boxShadow: '0 0 15px rgba(255,255,255,0.1)',
+          }}
+        />
+      </motion.div>
+
+      {/* Rotating square */}
+      <motion.div
+        style={{
+          position: 'absolute',
+          left: '55%',
+          top: '25%',
+          zIndex: 0,
+        }}
+        animate={{
+          rotate: [0, 180, 360],
+          scale: [1, 0.8, 1],
+        }}
+        transition={{
+          duration: 8,
+          repeat: Infinity,
+          ease: "linear"
+        }}
+      >
+        <Box
+          sx={{
+            width: '50px',
+            height: '50px',
+            background: 'linear-gradient(45deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0.05) 100%)',
+            borderRadius: '12px',
+            backdropFilter: 'blur(8px)',
+          }}
+        />
+      </motion.div>
+
+      {/* Pulsing triangle */}
+      <motion.div
+        style={{
+          position: 'absolute',
+          right: '15%',
+          bottom: '20%',
+          zIndex: 0,
+        }}
+        animate={{
+          y: [0, 15, 0],
+          rotate: [0, -15, 0],
+        }}
+        transition={{
+          duration: 6,
+          repeat: Infinity,
+          ease: "easeInOut"
+        }}
+      >
+        <Box
+          sx={{
+            width: '70px',
+            height: '70px',
+            clipPath: 'polygon(50% 0%, 100% 100%, 0% 100%)',
+            background: 'linear-gradient(180deg, rgba(255,255,255,0.12) 0%, rgba(255,255,255,0.03) 100%)',
+            backdropFilter: 'blur(8px)',
+          }}
+        />
+      </motion.div>
+    </>
+  );
+};
+
 const ModuleCard = styled(Card)(({ theme }) => ({
   height: '100%',
   display: 'flex',
@@ -514,6 +877,7 @@ const ModuleCard = styled(Card)(({ theme }) => ({
     transform: 'translateY(-4px)',
   },
   padding: theme.spacing(0.5),
+  position: 'relative',
 }));
 
 const NewsTicker = styled(Box)(({ theme }) => ({
@@ -554,12 +918,14 @@ const Home = () => {
   ];
 
   return (
-    <Box>
+    <Box sx={{ position: 'relative' }}>
+      <BackgroundElements />
       <HeroSection>
         <AnimatedShapes />
         <SecondAnimatedShapes />
         <ThirdAnimatedShapes />
         <FourthAnimatedShapes />
+        <AdditionalHeroShapes />
         <Box sx={{ maxWidth: '700px', mx: { xs: 2, md: 12 }, px: { xs: 2, md: 0 }, position: 'relative', zIndex: 1 }}>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -637,7 +1003,7 @@ const Home = () => {
             <Typography variant="body1" paragraph align="center" sx={{ fontSize: '1.1rem', lineHeight: 1.6, textAlign: 'center' }}>
               Our goal is to generate high-impact scholarly work while ensuring a pragmatic viewpoint to guarantee a successful integration in the way we manage the planning, design, construction, operation and maintenance, inspection, retrofit, and repair of the infrastructure and communities of the future.
             </Typography>
-            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'center', mt: 3, gap: 2 }}>
               <Button
                 variant="outlined"
                 color="primary"
@@ -647,6 +1013,16 @@ const Home = () => {
                 startIcon={<LinkedInIcon />}
               >
                 Visit Our LinkedIn
+              </Button>
+              <Button
+                variant="outlined"
+                color="primary"
+                href="https://nyuad.nyu.edu/en/research/faculty-labs-and-projects/smart-construction-research-group.html"
+                target="_blank"
+                rel="noopener noreferrer"
+                startIcon={<LanguageIcon />}
+              >
+                Visit Lab Website
               </Button>
             </Box>
           </motion.div>
@@ -694,7 +1070,7 @@ const Home = () => {
                     x: {
                       repeat: Infinity,
                       repeatType: 'loop',
-                      duration: 12,
+                      duration: 25,
                       ease: 'linear',
                     },
                   } : {}}
@@ -734,20 +1110,73 @@ const Home = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
+                style={{ height: '100%' }}
               >
-                <ModuleCard>
-                  <CardContent sx={{ flexGrow: 1, p: 1.5 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'center', mb: 0.5 }}>
-                      {module.icon}
+                <ModuleCard
+                  sx={{
+                    '&:hover .module-icon > *': {
+                      transform: 'scale(1.2) rotate(10deg)',
+                    }
+                  }}
+                >
+                  <CardContent sx={{ 
+                    flexGrow: 1, 
+                    p: 1.5, 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    height: '200px',
+                    justifyContent: 'flex-start'
+                  }}>
+                    <Box 
+                      className="module-icon"
+                      sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'center', 
+                        mb: 2,
+                        '& > *': {
+                          transition: 'transform 0.3s ease-in-out',
+                        }
+                      }}
+                    >
+                      <motion.div>
+                        {module.icon}
+                      </motion.div>
                     </Box>
-                    <Typography gutterBottom variant="h6" component="h3" align="center" sx={{ fontSize: '1rem', mb: 0.5 }}>
+                    <Typography 
+                      gutterBottom 
+                      variant="h6" 
+                      component="h3" 
+                      align="center" 
+                      sx={{ 
+                        fontSize: '1rem', 
+                        mb: 2,
+                        flexShrink: 0
+                      }}
+                    >
                       {module.title}
                     </Typography>
-                    <Typography align="center" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
+                    <Typography 
+                      align="center" 
+                      color="text.secondary" 
+                      sx={{ 
+                        fontSize: '0.85rem',
+                        flexGrow: 1,
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}
+                    >
                       {module.description}
                     </Typography>
                   </CardContent>
-                  <CardActions sx={{ justifyContent: 'center', pb: 1, pt: 0 }}>
+                  <CardActions sx={{ 
+                    justifyContent: 'center', 
+                    pb: 1, 
+                    pt: 0,
+                    flexShrink: 0
+                  }}>
                     <Button
                       variant="contained"
                       color="primary"

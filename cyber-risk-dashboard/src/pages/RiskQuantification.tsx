@@ -34,17 +34,14 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 interface ProjectInfo {
-  // Category 1: Overall Project Information
-  country: string;
-  budget: string;
-  cybersecurityBudget: string;
-  duration: string;
-  totalPeople: string;
+  // Section 1: Basic Project Information
+  projectDuration: string;
   projectType: string;
-  hasLegalTeam: string;
+  hasCyberLegalTeam: string;
+  companyScale: string;
+  projectPhase: string;
 
-  // Category 2: Project Structure
-  deliveryMethod: string;
+  // Section 2: Project Structure
   layer1Teams: string;
   layer2Teams: string;
   layer3Teams: string;
@@ -53,42 +50,36 @@ interface ProjectInfo {
   layer6Teams: string;
   layer7Teams: string;
   layer8Teams: string;
-  layer1Channels: string;
-  layer2Channels: string;
-  layer3Channels: string;
-  layer4Channels: string;
-  layer5Channels: string;
-  layer6Channels: string;
-  layer7Channels: string;
-  layer8Channels: string;
   teamOverlap: string;
 
-  // Category 3: IT Factors
-  companyScale: string;
-  projectPhase: string;
+  // Section 3: Technical Factors
   hasITTeam: string;
-  criticalAssets: string;
-  userEndpoints: string;
   devicesWithFirewall: string;
   networkType: string;
-  phishingTestFailRate: string;
-  mttr: string;
+  phishingFailRate: string;
 
-  // Category 4: OT Factors
-  otEquipment: string;
-  physicalAccessControl: string;
-  otIsolation: string;
-  otEquipmentAge: string;
-  hmiAuthentication: string;
+  // Section 4: Security Practices
+  governanceLevel: string;
+  allowPasswordReuse: string;
+  usesMFA: string;
 
-  // Category 5: Management and Human Factors
-  governanceCommitment: string;
-  securityTrainingFrequency: string;
-  passwordReuse: string;
-  mfaRequired: string;
-  sensitiveInfoAccess: string;
-  teamVariability: string;
-  socioeconomicLevel: string;
+  // Additional fields
+  regulatoryRequirements: string;
+  stakeholderCount: string;
+  thirdPartyVendors: string;
+  remoteWorkLevel: string;
+  cloudServices: string;
+  dataClassification: string;
+  bmsIntegration: string;
+  accessControl: string;
+  securityMonitoring: string;
+  incidentResponse: string;
+  backupStrategy: string;
+  securityCertifications: string;
+  securityAwareness: string;
+  securityTeamSize: string;
+  thirdPartySecurityReq: string;
+  securityBudget: string;
 }
 
 interface RiskAnalysis {
@@ -127,17 +118,10 @@ const RiskQuantification = () => {
   const [showSnackbar, setShowSnackbar] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>({
-    // Initialize all fields with empty strings
-    country: '', budget: '', cybersecurityBudget: '', duration: '', totalPeople: '',
-    projectType: '', hasLegalTeam: '', deliveryMethod: '', layer1Teams: '', layer2Teams: '',
-    layer3Teams: '', layer4Teams: '', layer5Teams: '', layer6Teams: '', layer7Teams: '',
-    layer8Teams: '', layer1Channels: '', layer2Channels: '', layer3Channels: '', layer4Channels: '',
-    layer5Channels: '', layer6Channels: '', layer7Channels: '', layer8Channels: '', teamOverlap: '',
-    companyScale: '', projectPhase: '', hasITTeam: '', criticalAssets: '', userEndpoints: '',
-    devicesWithFirewall: '', networkType: '', phishingTestFailRate: '', mttr: '', otEquipment: '',
-    physicalAccessControl: '', otIsolation: '', otEquipmentAge: '', hmiAuthentication: '',
-    governanceCommitment: '', securityTrainingFrequency: '', passwordReuse: '', mfaRequired: '',
-    sensitiveInfoAccess: '', teamVariability: '', socioeconomicLevel: ''
+    projectDuration: '', projectType: '', hasCyberLegalTeam: '', companyScale: '', projectPhase: '',
+    layer1Teams: '', layer2Teams: '', layer3Teams: '', layer4Teams: '', layer5Teams: '', layer6Teams: '',
+    layer7Teams: '', layer8Teams: '', teamOverlap: '', hasITTeam: '', devicesWithFirewall: '', networkType: '',
+    phishingFailRate: '', governanceLevel: '', allowPasswordReuse: '', usesMFA: ''
   });
 
   // Mock risk analysis results (replace with actual analysis logic)
@@ -190,11 +174,10 @@ const RiskQuantification = () => {
   });
 
   const steps = [
-    'Overall Project Information',
+    'Basic Project Information',
     'Project Structure',
-    'IT Factors',
-    'OT Factors',
-    'Management & Human Factors',
+    'Technical Factors',
+    'Security Practices',
     'Review & Calculate'
   ];
 
@@ -253,73 +236,213 @@ const RiskQuantification = () => {
     try {
       const doc = new jsPDF() as ExtendedJsPDF;
       
-      // Add title
-      doc.setFontSize(20);
-      doc.text('Risk Analysis Report', 14, 20);
-      
-      // Add date
-      doc.setFontSize(12);
-      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
-      
-      // Add project summary
-      doc.setFontSize(14);
-      doc.text('Project Information', 14, 40);
+      // Define colors
+      const primaryColor = [41, 128, 185];  // Blue
+      const secondaryColor = [44, 62, 80];  // Dark Gray
+      const accentColor = [231, 76, 60];    // Red
+      const warningColor = [243, 156, 18];  // Orange
+      const successColor = [46, 204, 113];  // Green
+
+      // Add header with logo-like design
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, doc.internal.pageSize.width, 40, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Cyber Risk Assessment Report', 14, 25);
+
+      // Add date and report info
+      doc.setTextColor(0, 0, 0);
       doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const currentDate = new Date().toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      doc.text(`Generated on: ${currentDate}`, 14, 50);
+
+      // Add project summary section
+      doc.setFillColor(244, 244, 244);
+      doc.rect(10, 60, doc.internal.pageSize.width - 20, 40, 'F');
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...secondaryColor);
+      doc.text('Project Overview', 14, 70);
       
-      // Create project info table
-      const projectInfoData = Object.entries(projectInfo).map(([key, value]) => [
-        key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()),
-        value || 'Not specified'
-      ]);
+      // Add project info in a clean format
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      const projectSummary = [
+        ['Project Type:', projectInfo.projectType],
+        ['Duration:', projectInfo.projectDuration],
+        ['Phase:', projectInfo.projectPhase],
+        ['Company Scale:', projectInfo.companyScale]
+      ];
       
       autoTable(doc, {
-        startY: 45,
-        head: [['Field', 'Value']],
-        body: projectInfoData,
-        theme: 'grid',
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [41, 128, 185] }
+        startY: 75,
+        head: [],
+        body: projectSummary,
+        theme: 'plain',
+        styles: { fontSize: 10, cellPadding: 2 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 60 },
+          1: { cellWidth: 100 }
+        },
+        margin: { left: 14 }
       });
 
-      // Add risk analysis
+      // Add risk analysis section
       doc.setFontSize(14);
-      doc.text('Risk Analysis Results', 14, doc.lastAutoTable.finalY + 15);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Risk Analysis Results', 14, doc.lastAutoTable.finalY + 20);
 
-      // Create risk analysis table
-      const riskAnalysisData = Object.entries(riskResults).map(([risk, analysis]) => [
-        risk.charAt(0).toUpperCase() + risk.slice(1).replace(/([A-Z])/g, ' $1'),
-        analysis.level.toUpperCase(),
-        `${analysis.score}/100`,
-        analysis.recommendations.join('\n')
-      ]);
+      // Create risk score visualization
+      const riskScores = Object.entries(riskResults).map(([risk, analysis]) => {
+        const riskColor = analysis.level === 'critical' ? accentColor :
+                         analysis.level === 'high' ? warningColor :
+                         analysis.level === 'medium' ? primaryColor :
+                         successColor;
+        
+        return [
+          risk.charAt(0).toUpperCase() + risk.slice(1).replace(/([A-Z])/g, ' $1'),
+          analysis.level.toUpperCase(),
+          `${analysis.score}/100`,
+          analysis.recommendations.join('\n'),
+          riskColor
+        ];
+      });
 
+      // Add risk analysis table with color coding
       autoTable(doc, {
-        startY: doc.lastAutoTable.finalY + 20,
-        head: [['Risk Type', 'Level', 'Score', 'Recommendations']],
-        body: riskAnalysisData,
+        startY: doc.lastAutoTable.finalY + 25,
+        head: [['Risk Category', 'Risk Level', 'Risk Score', 'Recommendations']],
+        body: riskScores.map(([name, level, score, recs]) => [name, level, score, recs]),
         theme: 'grid',
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [41, 128, 185] },
+        styles: { 
+          fontSize: 9,
+          cellPadding: 5,
+          lineColor: [200, 200, 200],
+          lineWidth: 0.1
+        },
+        headStyles: { 
+          fillColor: [...secondaryColor],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold'
+        },
         columnStyles: {
-          3: { cellWidth: 60 }
+          0: { cellWidth: 40, fontStyle: 'bold' },
+          1: { cellWidth: 30 },
+          2: { cellWidth: 25 },
+          3: { cellWidth: 95 }
+        },
+        didDrawCell: (data) => {
+          if (data.section === 'body' && data.column.index === 1) {
+            const level = data.cell.raw?.toString().toLowerCase();
+            const fillColor = level === 'critical' ? accentColor :
+                            level === 'high' ? warningColor :
+                            level === 'medium' ? primaryColor :
+                            successColor;
+            
+            doc.setFillColor(...fillColor);
+            doc.circle(
+              data.cell.x + 4,
+              data.cell.y + data.cell.height / 2,
+              2,
+              'F'
+            );
+          }
         }
       });
 
-      // Add footer
+      // Add risk score visualization
+      doc.addPage();
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, doc.internal.pageSize.width, 40, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Risk Score Visualization', 14, 25);
+
+      // Draw risk score gauges
+      let startY = 60;
+      riskScores.forEach(([name, level, score], index) => {
+        const scoreNum = parseInt(score);
+        doc.setFillColor(240, 240, 240);
+        doc.rect(30, startY, 150, 15, 'F');
+        
+        const riskColor = level.toLowerCase() === 'critical' ? accentColor :
+                         level.toLowerCase() === 'high' ? warningColor :
+                         level.toLowerCase() === 'medium' ? primaryColor :
+                         successColor;
+        
+        doc.setFillColor(...riskColor);
+        doc.rect(30, startY, (scoreNum / 100) * 150, 15, 'F');
+        
+        doc.setFontSize(10);
+        doc.setTextColor(0, 0, 0);
+        doc.setFont('helvetica', 'bold');
+        doc.text(name as string, 30, startY - 5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`${score}`, 185, startY + 10);
+        
+        startY += 40;
+      });
+
+      // Add security recommendations section
+      doc.addPage();
+      doc.setFillColor(...primaryColor);
+      doc.rect(0, 0, doc.internal.pageSize.width, 40, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Security Recommendations', 14, 25);
+
+      // Add recommendations in a structured format
+      startY = 60;
+      riskScores.forEach(([name, level, score, recommendations], index) => {
+        doc.setTextColor(...secondaryColor);
+        doc.setFontSize(12);
+        doc.setFont('helvetica', 'bold');
+        doc.text(name as string, 14, startY);
+        
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'normal');
+        const recs = (recommendations as string).split('\n');
+        recs.forEach((rec, recIndex) => {
+          doc.setTextColor(0, 0, 0);
+          doc.text(`• ${rec}`, 20, startY + 10 + (recIndex * 7));
+        });
+        
+        startY += 40;
+      });
+
+      // Add footer to all pages
       const pageCount = (doc as any).internal.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
         doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
         doc.text(
           `Page ${i} of ${pageCount}`,
           doc.internal.pageSize.width / 2,
           doc.internal.pageSize.height - 10,
           { align: 'center' }
         );
+        
+        // Add footer line
+        doc.setDrawColor(200, 200, 200);
+        doc.line(
+          20,
+          doc.internal.pageSize.height - 20,
+          doc.internal.pageSize.width - 20,
+          doc.internal.pageSize.height - 20
+        );
       }
 
       // Save the PDF
-      doc.save('risk-analysis-report.pdf');
+      doc.save('cyber-risk-assessment-report.pdf');
       setSnackbarMessage('Report exported successfully!');
       setShowSnackbar(true);
     } catch (error) {
@@ -416,84 +539,17 @@ const RiskQuantification = () => {
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Country (Continent)</InputLabel>
-                <Select
-                  value={projectInfo.country}
-                  label="Country (Continent)"
-                  onChange={handleInputChange('country')}
-                >
-                  <MenuItem value="asia">Asia</MenuItem>
-                  <MenuItem value="europe">Europe</MenuItem>
-                  <MenuItem value="africa">Africa</MenuItem>
-                  <MenuItem value="north_america">North America</MenuItem>
-                  <MenuItem value="south_america">South America</MenuItem>
-                  <MenuItem value="antarctica">Antarctica</MenuItem>
-                  <MenuItem value="oceania">Oceania</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Project Budget</InputLabel>
-                <Select
-                  value={projectInfo.budget}
-                  label="Project Budget"
-                  onChange={handleInputChange('budget')}
-                >
-                  <MenuItem value="<=100k">≤ $100,000</MenuItem>
-                  <MenuItem value="100k-500k">$100,000 - $500,000</MenuItem>
-                  <MenuItem value="500k-1m">$500,000 - $1 million</MenuItem>
-                  <MenuItem value="1m-5m">$1 million - $5 million</MenuItem>
-                  <MenuItem value=">5m">{'>'} $5 million</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Cybersecurity Budget %</InputLabel>
-                <Select
-                  value={projectInfo.cybersecurityBudget}
-                  label="Cybersecurity Budget %"
-                  onChange={handleInputChange('cybersecurityBudget')}
-                >
-                  <MenuItem value="<=1%">≤ 1%</MenuItem>
-                  <MenuItem value="1%-2%">1% - 2%</MenuItem>
-                  <MenuItem value="2%-3%">2% - 3%</MenuItem>
-                  <MenuItem value="3%-4%">3% - 4%</MenuItem>
-                  <MenuItem value="4%-5%">4% - 5%</MenuItem>
-                  <MenuItem value=">5%">{'>'} 5%</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
                 <InputLabel>Project Duration</InputLabel>
                 <Select
-                  value={projectInfo.duration}
+                  value={projectInfo.projectDuration}
                   label="Project Duration"
-                  onChange={handleInputChange('duration')}
+                  onChange={handleInputChange('projectDuration')}
                 >
-                  <MenuItem value="<=6m">≤ 6 months</MenuItem>
-                  <MenuItem value="6m-1y">6 months - 1 year</MenuItem>
-                  <MenuItem value="1y-2y">1-2 years</MenuItem>
-                  <MenuItem value="2y-3y">2-3 years</MenuItem>
-                  <MenuItem value=">3y">{'>'} 3 years</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Total People Involved</InputLabel>
-                <Select
-                  value={projectInfo.totalPeople}
-                  label="Total People Involved"
-                  onChange={handleInputChange('totalPeople')}
-                >
-                  <MenuItem value="<=50">≤ 50</MenuItem>
-                  <MenuItem value="51-100">51-100</MenuItem>
-                  <MenuItem value="101-200">101-200</MenuItem>
-                  <MenuItem value="201-500">201-500</MenuItem>
-                  <MenuItem value=">500">{'>'} 500</MenuItem>
+                  <MenuItem value="<=3m">≤ 3 months</MenuItem>
+                  <MenuItem value="3-6m">3 - 6 months</MenuItem>
+                  <MenuItem value="6-12m">6 - 12 months</MenuItem>
+                  <MenuItem value="12-24m">12 - 24 months</MenuItem>
+                  <MenuItem value=">24m">{'>'}24 months</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -505,104 +561,29 @@ const RiskQuantification = () => {
                   label="Project Type"
                   onChange={handleInputChange('projectType')}
                 >
-                  <MenuItem value="residential">Residential</MenuItem>
-                  <MenuItem value="commercial">Commercial</MenuItem>
-                  <MenuItem value="industrial">Industrial</MenuItem>
-                  <MenuItem value="infrastructure">Infrastructure</MenuItem>
-                  <MenuItem value="mixed">Mixed Use</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Has Legal Team</InputLabel>
-                <Select
-                  value={projectInfo.hasLegalTeam}
-                  label="Has Legal Team"
-                  onChange={handleInputChange('hasLegalTeam')}
-                >
-                  <MenuItem value="yes">Yes</MenuItem>
-                  <MenuItem value="no">No</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-          </Box>
-        );
-      case 1:
-        return (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Project Delivery Method</InputLabel>
-                <Select
-                  value={projectInfo.deliveryMethod}
-                  label="Project Delivery Method"
-                  onChange={handleInputChange('deliveryMethod')}
-                >
-                  <MenuItem value="dbb">Design-Bid-Build (DBB)</MenuItem>
-                  <MenuItem value="db">Design-Build (DB)</MenuItem>
-                  <MenuItem value="cmar">Construction Manager at Risk (CMAR)</MenuItem>
-                  <MenuItem value="cmmp">Construction Management Multi-Prime (CMMP)</MenuItem>
-                  <MenuItem value="ppp">Public-Private Partnership (PPP or P3)</MenuItem>
-                  <MenuItem value="ipd">Integrated Project Delivery (IPD)</MenuItem>
-                  <MenuItem value="dbom">Design/Build/Operate/Maintain (DBOM)</MenuItem>
+                  <MenuItem value="transportation">Transportation Infrastructure Projects</MenuItem>
+                  <MenuItem value="government">Government Projects</MenuItem>
+                  <MenuItem value="healthcare">Healthcare Projects</MenuItem>
+                  <MenuItem value="commercial">Large-Scale Commercial Projects</MenuItem>
+                  <MenuItem value="residential">Residential Projects</MenuItem>
                   <MenuItem value="other">Other types</MenuItem>
                 </Select>
               </FormControl>
             </Box>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Layer 1 Teams</InputLabel>
+                <InputLabel>Dedicated Cybersecurity Legal Team</InputLabel>
                 <Select
-                  value={projectInfo.layer1Teams}
-                  label="Layer 1 Teams"
-                  onChange={handleInputChange('layer1Teams')}
+                  value={projectInfo.hasCyberLegalTeam}
+                  label="Dedicated Cybersecurity Legal Team"
+                  onChange={handleInputChange('hasCyberLegalTeam')}
                 >
-                  <MenuItem value="1-2">1-2 teams</MenuItem>
-                  <MenuItem value="3-4">3-4 teams</MenuItem>
-                  <MenuItem value="5-6">5-6 teams</MenuItem>
-                  <MenuItem value="7-8">7-8 teams</MenuItem>
-                  <MenuItem value=">8">{'>'} 8 teams</MenuItem>
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
+                  <MenuItem value="unsure">Unsure</MenuItem>
                 </Select>
               </FormControl>
             </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Layer 1 Communication Channels</InputLabel>
-                <Select
-                  value={projectInfo.layer1Channels}
-                  label="Layer 1 Communication Channels"
-                  onChange={handleInputChange('layer1Channels')}
-                >
-                  <MenuItem value="1-2">1-2 channels</MenuItem>
-                  <MenuItem value="3-4">3-4 channels</MenuItem>
-                  <MenuItem value="5-6">5-6 channels</MenuItem>
-                  <MenuItem value="7-8">7-8 channels</MenuItem>
-                  <MenuItem value=">8">{'>'} 8 channels</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Team Overlap</InputLabel>
-                <Select
-                  value={projectInfo.teamOverlap}
-                  label="Team Overlap"
-                  onChange={handleInputChange('teamOverlap')}
-                >
-                  <MenuItem value="none">No overlap</MenuItem>
-                  <MenuItem value="low">Low overlap</MenuItem>
-                  <MenuItem value="medium">Medium overlap</MenuItem>
-                  <MenuItem value="high">High overlap</MenuItem>
-                  <MenuItem value="very_high">Very high overlap</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-          </Box>
-        );
-      case 2:
-        return (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
                 <InputLabel>Company Scale</InputLabel>
@@ -615,7 +596,7 @@ const RiskQuantification = () => {
                   <MenuItem value="31-60">31 - 60</MenuItem>
                   <MenuItem value="61-100">61 - 100</MenuItem>
                   <MenuItem value="101-150">101 - 150</MenuItem>
-                  <MenuItem value=">150">{'>'} 150</MenuItem>
+                  <MenuItem value=">150">{'>'}150</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -627,72 +608,105 @@ const RiskQuantification = () => {
                   label="Project Phase"
                   onChange={handleInputChange('projectPhase')}
                 >
-                  <MenuItem value="planning">Planning</MenuItem>
-                  <MenuItem value="design">Design</MenuItem>
-                  <MenuItem value="construction">Construction</MenuItem>
-                  <MenuItem value="commissioning">Commissioning</MenuItem>
-                  <MenuItem value="operation">Operation</MenuItem>
+                  <MenuItem value="planning">Planning and Bidding phase</MenuItem>
+                  <MenuItem value="design">Design phase</MenuItem>
+                  <MenuItem value="construction">Construction phase</MenuItem>
+                  <MenuItem value="maintenance">Maintenance & Operation phase</MenuItem>
+                  <MenuItem value="demolition">Demolition phase</MenuItem>
                 </Select>
               </FormControl>
             </Box>
+          </Box>
+        );
+      case 1:
+        return (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Number of Sub-teams at Different Layers
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              The number of sub-teams at different layers of a project indicates the project's structural complexity and associated cyber risks. 
+              Outer-layer sub-teams, often smaller with fewer cybersecurity resources, are generally more vulnerable, while inner-layer teams 
+              are typically larger, better equipped, and more security-conscious. Understanding the distribution of sub-teams across layers is 
+              crucial for implementing effective, targeted risk management strategies.
+            </Typography>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((layer) => (
+                <Box key={layer} sx={{ flex: '1 1 300px', minWidth: 0 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Layer {layer} Teams</InputLabel>
+                    <Select
+                      value={projectInfo[`layer${layer}Teams` as keyof ProjectInfo]}
+                      label={`Layer ${layer} Teams`}
+                      onChange={handleInputChange(`layer${layer}Teams` as keyof ProjectInfo)}
+                    >
+                      <MenuItem value="<=10">≤ 10</MenuItem>
+                      <MenuItem value="11-20">11 - 20</MenuItem>
+                      <MenuItem value="21-30">21 - 30</MenuItem>
+                      <MenuItem value="31-40">31 - 40</MenuItem>
+                      <MenuItem value=">40">{'>'}40</MenuItem>
+                      <MenuItem value="na">N/A</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              ))}
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0, mt: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Team Overlap
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                The percentage of teams overlapping in different projects refers to the proportion of teams engaged simultaneously in multiple initiatives. 
+                This overlap can elevate cyber risks due to shared resources and personnel, which may introduce security gaps and dependencies. 
+                Increased team overlap heightens the likelihood of breaches and necessitates robust management strategies to address these vulnerabilities effectively.
+              </Typography>
+              <FormControl fullWidth>
+                <InputLabel>Team Overlap Percentage</InputLabel>
+                <Select
+                  value={projectInfo.teamOverlap}
+                  label="Team Overlap Percentage"
+                  onChange={handleInputChange('teamOverlap')}
+                >
+                  <MenuItem value="<=20">≤ 20%</MenuItem>
+                  <MenuItem value="21-40">21% - 40%</MenuItem>
+                  <MenuItem value="41-60">41% - 60%</MenuItem>
+                  <MenuItem value="61-80">61% - 80%</MenuItem>
+                  <MenuItem value="81-100">81% - 100%</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+        );
+      case 2:
+        return (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Has IT Team</InputLabel>
+                <InputLabel>Dedicated IT Team</InputLabel>
                 <Select
                   value={projectInfo.hasITTeam}
-                  label="Has IT Team"
+                  label="Dedicated IT Team"
                   onChange={handleInputChange('hasITTeam')}
                 >
                   <MenuItem value="yes">Yes</MenuItem>
                   <MenuItem value="no">No</MenuItem>
+                  <MenuItem value="unsure">Unsure</MenuItem>
                 </Select>
               </FormControl>
             </Box>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Critical Assets</InputLabel>
-                <Select
-                  value={projectInfo.criticalAssets}
-                  label="Critical Assets"
-                  onChange={handleInputChange('criticalAssets')}
-                >
-                  <MenuItem value="<=5">≤ 5</MenuItem>
-                  <MenuItem value="6-10">6-10</MenuItem>
-                  <MenuItem value="11-20">11-20</MenuItem>
-                  <MenuItem value="21-30">21-30</MenuItem>
-                  <MenuItem value=">30">{'>'} 30</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>User Endpoints</InputLabel>
-                <Select
-                  value={projectInfo.userEndpoints}
-                  label="User Endpoints"
-                  onChange={handleInputChange('userEndpoints')}
-                >
-                  <MenuItem value="<=50">≤ 50</MenuItem>
-                  <MenuItem value="51-100">51-100</MenuItem>
-                  <MenuItem value="101-200">101-200</MenuItem>
-                  <MenuItem value="201-500">201-500</MenuItem>
-                  <MenuItem value=">500">{'>'} 500</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Devices with Firewall</InputLabel>
+                <InputLabel>Devices with Firewall/IDS</InputLabel>
                 <Select
                   value={projectInfo.devicesWithFirewall}
-                  label="Devices with Firewall"
+                  label="Devices with Firewall/IDS"
                   onChange={handleInputChange('devicesWithFirewall')}
                 >
-                  <MenuItem value="<=25%">≤ 25%</MenuItem>
-                  <MenuItem value="26-50%">26-50%</MenuItem>
-                  <MenuItem value="51-75%">51-75%</MenuItem>
-                  <MenuItem value="76-90%">76-90%</MenuItem>
-                  <MenuItem value=">90%">{'>'} 90%</MenuItem>
+                  <MenuItem value="<=20">≤ 20%</MenuItem>
+                  <MenuItem value="21-40">21% - 40%</MenuItem>
+                  <MenuItem value="41-60">41% - 60%</MenuItem>
+                  <MenuItem value="61-80">61% - 80%</MenuItem>
+                  <MenuItem value="81-100">81% - 100%</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -704,43 +718,29 @@ const RiskQuantification = () => {
                   label="Network Type"
                   onChange={handleInputChange('networkType')}
                 >
-                  <MenuItem value="isolated">Isolated</MenuItem>
-                  <MenuItem value="segmented">Segmented</MenuItem>
-                  <MenuItem value="integrated">Integrated</MenuItem>
-                  <MenuItem value="cloud">Cloud-based</MenuItem>
-                  <MenuItem value="hybrid">Hybrid</MenuItem>
+                  <MenuItem value="public">Public network</MenuItem>
+                  <MenuItem value="private">Private network</MenuItem>
+                  <MenuItem value="both">Both public and private network</MenuItem>
                 </Select>
               </FormControl>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Choosing between a public or private network impacts a project's cybersecurity. Public networks can be vulnerable to attacks due to easier access, 
+                while private networks offer enhanced security controls but may be costly and complex to manage. Each type requires specific security approaches.
+              </Typography>
             </Box>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Phishing Test Fail Rate</InputLabel>
+                <InputLabel>Phishing Test Failure Rate</InputLabel>
                 <Select
-                  value={projectInfo.phishingTestFailRate}
-                  label="Phishing Test Fail Rate"
-                  onChange={handleInputChange('phishingTestFailRate')}
+                  value={projectInfo.phishingFailRate}
+                  label="Phishing Test Failure Rate"
+                  onChange={handleInputChange('phishingFailRate')}
                 >
-                  <MenuItem value="<=5%">≤ 5%</MenuItem>
-                  <MenuItem value="6-10%">6-10%</MenuItem>
-                  <MenuItem value="11-20%">11-20%</MenuItem>
-                  <MenuItem value="21-30%">21-30%</MenuItem>
-                  <MenuItem value=">30%">{'>'} 30%</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Mean Time to Respond (MTTR)</InputLabel>
-                <Select
-                  value={projectInfo.mttr}
-                  label="Mean Time to Respond (MTTR)"
-                  onChange={handleInputChange('mttr')}
-                >
-                  <MenuItem value="<=1h">≤ 1 hour</MenuItem>
-                  <MenuItem value="1-4h">1-4 hours</MenuItem>
-                  <MenuItem value="4-8h">4-8 hours</MenuItem>
-                  <MenuItem value="8-24h">8-24 hours</MenuItem>
-                  <MenuItem value=">24h">{'>'} 24 hours</MenuItem>
+                  <MenuItem value="<=20">≤ 20%</MenuItem>
+                  <MenuItem value="21-40">21% - 40%</MenuItem>
+                  <MenuItem value="41-60">41% - 60%</MenuItem>
+                  <MenuItem value="61-80">61% - 80%</MenuItem>
+                  <MenuItem value="81-100">81% - 100%</MenuItem>
                 </Select>
               </FormControl>
             </Box>
@@ -751,95 +751,11 @@ const RiskQuantification = () => {
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>OT Equipment Count</InputLabel>
-                <Select
-                  value={projectInfo.otEquipment}
-                  label="OT Equipment Count"
-                  onChange={handleInputChange('otEquipment')}
-                >
-                  <MenuItem value="<=30">≤ 30</MenuItem>
-                  <MenuItem value="31-60">31-60</MenuItem>
-                  <MenuItem value="61-90">61-90</MenuItem>
-                  <MenuItem value="91-120">91-120</MenuItem>
-                  <MenuItem value="121-150">121-150</MenuItem>
-                  <MenuItem value=">150">{'>'} 150</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Physical Access Control</InputLabel>
-                <Select
-                  value={projectInfo.physicalAccessControl}
-                  label="Physical Access Control"
-                  onChange={handleInputChange('physicalAccessControl')}
-                >
-                  <MenuItem value="none">None</MenuItem>
-                  <MenuItem value="basic">Basic</MenuItem>
-                  <MenuItem value="standard">Standard</MenuItem>
-                  <MenuItem value="advanced">Advanced</MenuItem>
-                  <MenuItem value="comprehensive">Comprehensive</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>OT Isolation</InputLabel>
-                <Select
-                  value={projectInfo.otIsolation}
-                  label="OT Isolation"
-                  onChange={handleInputChange('otIsolation')}
-                >
-                  <MenuItem value="none">None</MenuItem>
-                  <MenuItem value="partial">Partial</MenuItem>
-                  <MenuItem value="full">Full</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>OT Equipment Age</InputLabel>
-                <Select
-                  value={projectInfo.otEquipmentAge}
-                  label="OT Equipment Age"
-                  onChange={handleInputChange('otEquipmentAge')}
-                >
-                  <MenuItem value="<=2y">≤ 2 years</MenuItem>
-                  <MenuItem value="2-5y">2-5 years</MenuItem>
-                  <MenuItem value="5-10y">5-10 years</MenuItem>
-                  <MenuItem value="10-15y">10-15 years</MenuItem>
-                  <MenuItem value=">15y">{'>'} 15 years</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>HMI Authentication</InputLabel>
-                <Select
-                  value={projectInfo.hmiAuthentication}
-                  label="HMI Authentication"
-                  onChange={handleInputChange('hmiAuthentication')}
-                >
-                  <MenuItem value="none">None</MenuItem>
-                  <MenuItem value="basic">Basic</MenuItem>
-                  <MenuItem value="standard">Standard</MenuItem>
-                  <MenuItem value="advanced">Advanced</MenuItem>
-                  <MenuItem value="comprehensive">Comprehensive</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-          </Box>
-        );
-      case 4:
-        return (
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
                 <InputLabel>Governance Commitment Level</InputLabel>
                 <Select
-                  value={projectInfo.governanceCommitment}
+                  value={projectInfo.governanceLevel}
                   label="Governance Commitment Level"
-                  onChange={handleInputChange('governanceCommitment')}
+                  onChange={handleInputChange('governanceLevel')}
                 >
                   <MenuItem value="level1">Level 1</MenuItem>
                   <MenuItem value="level2">Level 2</MenuItem>
@@ -851,100 +767,230 @@ const RiskQuantification = () => {
             </Box>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Security Training Frequency</InputLabel>
+                <InputLabel>Password Reuse Allowed</InputLabel>
                 <Select
-                  value={projectInfo.securityTrainingFrequency}
-                  label="Security Training Frequency"
-                  onChange={handleInputChange('securityTrainingFrequency')}
+                  value={projectInfo.allowPasswordReuse}
+                  label="Password Reuse Allowed"
+                  onChange={handleInputChange('allowPasswordReuse')}
                 >
-                  <MenuItem value="never">Never</MenuItem>
-                  <MenuItem value="yearly">Yearly</MenuItem>
-                  <MenuItem value="biannual">Biannual</MenuItem>
-                  <MenuItem value="quarterly">Quarterly</MenuItem>
-                  <MenuItem value="monthly">Monthly</MenuItem>
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
                 </Select>
               </FormControl>
             </Box>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Password Reuse</InputLabel>
+                <InputLabel>Uses MFA/Biometrics</InputLabel>
                 <Select
-                  value={projectInfo.passwordReuse}
-                  label="Password Reuse"
-                  onChange={handleInputChange('passwordReuse')}
+                  value={projectInfo.usesMFA}
+                  label="Uses MFA/Biometrics"
+                  onChange={handleInputChange('usesMFA')}
                 >
-                  <MenuItem value="none">None</MenuItem>
-                  <MenuItem value="low">Low</MenuItem>
-                  <MenuItem value="medium">Medium</MenuItem>
-                  <MenuItem value="high">High</MenuItem>
-                  <MenuItem value="very_high">Very High</MenuItem>
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
                 </Select>
               </FormControl>
             </Box>
+          </Box>
+        );
+      case 4:
+        return (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>MFA Required</InputLabel>
+                <InputLabel>Data Classification</InputLabel>
                 <Select
-                  value={projectInfo.mfaRequired}
-                  label="MFA Required"
-                  onChange={handleInputChange('mfaRequired')}
+                  value={projectInfo.dataClassification}
+                  label="Data Classification"
+                  onChange={handleInputChange('dataClassification')}
                 >
-                  <MenuItem value="none">None</MenuItem>
-                  <MenuItem value="partial">Partial</MenuItem>
-                  <MenuItem value="full">Full</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Sensitive Info Access</InputLabel>
-                <Select
-                  value={projectInfo.sensitiveInfoAccess}
-                  label="Sensitive Info Access"
-                  onChange={handleInputChange('sensitiveInfoAccess')}
-                >
-                  <MenuItem value="unrestricted">Unrestricted</MenuItem>
-                  <MenuItem value="limited">Limited</MenuItem>
+                  <MenuItem value="public">Public Only</MenuItem>
+                  <MenuItem value="internal">Internal Use</MenuItem>
+                  <MenuItem value="confidential">Confidential</MenuItem>
                   <MenuItem value="restricted">Restricted</MenuItem>
-                  <MenuItem value="strict">Strict</MenuItem>
+                  <MenuItem value="critical">Critical</MenuItem>
                 </Select>
               </FormControl>
             </Box>
             <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
               <FormControl fullWidth>
-                <InputLabel>Team Variability</InputLabel>
+                <InputLabel>BMS Integration</InputLabel>
                 <Select
-                  value={projectInfo.teamVariability}
-                  label="Team Variability"
-                  onChange={handleInputChange('teamVariability')}
+                  value={projectInfo.bmsIntegration}
+                  label="BMS Integration"
+                  onChange={handleInputChange('bmsIntegration')}
                 >
-                  <MenuItem value="none">None</MenuItem>
-                  <MenuItem value="low">Low</MenuItem>
-                  <MenuItem value="medium">Medium</MenuItem>
-                  <MenuItem value="high">High</MenuItem>
-                  <MenuItem value="very_high">Very High</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
-              <FormControl fullWidth>
-                <InputLabel>Socioeconomic Level</InputLabel>
-                <Select
-                  value={projectInfo.socioeconomicLevel}
-                  label="Socioeconomic Level"
-                  onChange={handleInputChange('socioeconomicLevel')}
-                >
-                  <MenuItem value="low">Low</MenuItem>
-                  <MenuItem value="medium_low">Medium-Low</MenuItem>
-                  <MenuItem value="medium">Medium</MenuItem>
-                  <MenuItem value="medium_high">Medium-High</MenuItem>
-                  <MenuItem value="high">High</MenuItem>
+                  <MenuItem value="none">No BMS</MenuItem>
+                  <MenuItem value="basic">Basic Integration</MenuItem>
+                  <MenuItem value="advanced">Advanced Integration</MenuItem>
+                  <MenuItem value="full">Full Integration</MenuItem>
                 </Select>
               </FormControl>
             </Box>
           </Box>
         );
       case 5:
+        return (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Access Control System</InputLabel>
+                <Select
+                  value={projectInfo.accessControl}
+                  label="Access Control System"
+                  onChange={handleInputChange('accessControl')}
+                >
+                  <MenuItem value="basic">Basic (Password Only)</MenuItem>
+                  <MenuItem value="mfa">Multi-Factor Authentication</MenuItem>
+                  <MenuItem value="biometric">Biometric</MenuItem>
+                  <MenuItem value="advanced">Advanced (Zero Trust)</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Security Monitoring</InputLabel>
+                <Select
+                  value={projectInfo.securityMonitoring}
+                  label="Security Monitoring"
+                  onChange={handleInputChange('securityMonitoring')}
+                >
+                  <MenuItem value="none">No Monitoring</MenuItem>
+                  <MenuItem value="basic">Basic Monitoring</MenuItem>
+                  <MenuItem value="24x7">24x7 Monitoring</MenuItem>
+                  <MenuItem value="soc">Full SOC</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Incident Response Plan</InputLabel>
+                <Select
+                  value={projectInfo.incidentResponse}
+                  label="Incident Response Plan"
+                  onChange={handleInputChange('incidentResponse')}
+                >
+                  <MenuItem value="none">No Plan</MenuItem>
+                  <MenuItem value="basic">Basic Plan</MenuItem>
+                  <MenuItem value="documented">Documented & Tested</MenuItem>
+                  <MenuItem value="mature">Mature & Regularly Updated</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Backup Strategy</InputLabel>
+                <Select
+                  value={projectInfo.backupStrategy}
+                  label="Backup Strategy"
+                  onChange={handleInputChange('backupStrategy')}
+                >
+                  <MenuItem value="none">No Backup</MenuItem>
+                  <MenuItem value="basic">Basic Backup</MenuItem>
+                  <MenuItem value="regular">Regular Backup</MenuItem>
+                  <MenuItem value="continuous">Continuous Backup</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Security Certifications</InputLabel>
+                <Select
+                  value={projectInfo.securityCertifications}
+                  label="Security Certifications"
+                  onChange={handleInputChange('securityCertifications')}
+                >
+                  <MenuItem value="none">None</MenuItem>
+                  <MenuItem value="iso27001">ISO 27001</MenuItem>
+                  <MenuItem value="soc2">SOC 2</MenuItem>
+                  <MenuItem value="multiple">Multiple Standards</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+        );
+      case 6:
+        return (
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Security Training Program</InputLabel>
+                <Select
+                  value={projectInfo.securityTrainingFrequency}
+                  label="Security Training Program"
+                  onChange={handleInputChange('securityTrainingFrequency')}
+                >
+                  <MenuItem value="none">No Training</MenuItem>
+                  <MenuItem value="onboarding">Onboarding Only</MenuItem>
+                  <MenuItem value="annual">Annual Training</MenuItem>
+                  <MenuItem value="quarterly">Quarterly Training</MenuItem>
+                  <MenuItem value="continuous">Continuous Training</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Security Awareness Level</InputLabel>
+                <Select
+                  value={projectInfo.securityAwareness}
+                  label="Security Awareness Level"
+                  onChange={handleInputChange('securityAwareness')}
+                >
+                  <MenuItem value="low">Low Awareness</MenuItem>
+                  <MenuItem value="moderate">Moderate Awareness</MenuItem>
+                  <MenuItem value="high">High Awareness</MenuItem>
+                  <MenuItem value="expert">Expert Level</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Security Team Size</InputLabel>
+                <Select
+                  value={projectInfo.securityTeamSize}
+                  label="Security Team Size"
+                  onChange={handleInputChange('securityTeamSize')}
+                >
+                  <MenuItem value="none">No Dedicated Team</MenuItem>
+                  <MenuItem value="small">1-5 People</MenuItem>
+                  <MenuItem value="medium">6-15 People</MenuItem>
+                  <MenuItem value="large">{'>'} 15 People</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Third-party Security Requirements</InputLabel>
+                <Select
+                  value={projectInfo.thirdPartySecurityReq}
+                  label="Third-party Security Requirements"
+                  onChange={handleInputChange('thirdPartySecurityReq')}
+                >
+                  <MenuItem value="none">No Requirements</MenuItem>
+                  <MenuItem value="basic">Basic Requirements</MenuItem>
+                  <MenuItem value="moderate">Moderate Requirements</MenuItem>
+                  <MenuItem value="strict">Strict Requirements</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+            <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
+              <FormControl fullWidth>
+                <InputLabel>Security Budget Allocation</InputLabel>
+                <Select
+                  value={projectInfo.securityBudget}
+                  label="Security Budget Allocation"
+                  onChange={handleInputChange('securityBudget')}
+                >
+                  <MenuItem value="minimal">{'<'} 1% of Project Budget</MenuItem>
+                  <MenuItem value="low">1-3% of Project Budget</MenuItem>
+                  <MenuItem value="moderate">3-5% of Project Budget</MenuItem>
+                  <MenuItem value="high">{'>'} 5% of Project Budget</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
+        );
+      case 7:
         return (
           <Box>
             <Typography variant="h5" gutterBottom>
