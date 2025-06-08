@@ -1,7 +1,16 @@
 {
+  "name": "website-development",
+  "version": "1.0.0",
+  "description": "Website development with specialized chatbot",
+  "main": "src/example.js",
+  "scripts": {
+    "start": "node src/example.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.0",
+    "@google/generative-ai": "^0.2.1",
     "@mui/lab": "^7.0.0-beta.12",
     "@mui/material": "^7.1.0",
     "@types/jspdf": "^2.0.0",

@@ -4,9 +4,14 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { join } from 'path';
 
-// Load environment variables
-dotenv.config();
+// Get directory name for ES module
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Load environment variables from .env file in the backend directory
+dotenv.config({ path: join(__dirname, '.env') });
 
 const app = express();
 

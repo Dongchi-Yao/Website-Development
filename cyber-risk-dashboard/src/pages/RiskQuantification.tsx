@@ -57,6 +57,7 @@ import DeveloperModeIcon from '@mui/icons-material/DeveloperMode';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { styled } from '@mui/material/styles';
+import ChatbotService from '../services/chatbotService';
 
 interface ProjectInfo {
   // Section 1: Basic Project Information
@@ -474,6 +475,10 @@ const RiskQuantification = () => {
 
   // Active tab state for the new section
   const [activeTab, setActiveTab] = useState(0);
+
+  // Add new state for chatbot service
+  const [chatbotService, setChatbotService] = useState<ChatbotService | null>(null);
+  const [isChatInitialized, setIsChatInitialized] = useState(false);
 
   const sections = ['Basic Info', 'Structure', 'Technical', 'Security'];
   const sectionDescriptions = [
@@ -1855,46 +1860,77 @@ const RiskQuantification = () => {
   // Chatbot functions
   const currentConversation = conversations.find(conv => conv.id === currentConversationId);
 
-  const handleChatSend = () => {
-    if (!chatInput.trim() || !currentConversation) return;
+  // Initialize chatbot when component mounts or risk results change
+  useEffect(() => {
+    const initializeChat = async () => {
+      if (!chatbotService) {
+        const service = new ChatbotService();
+        setChatbotService(service);
+        const success = await service.initialize(isFormComplete() ? riskResults : undefined);
+        setIsChatInitialized(success);
+      } else if (isFormComplete() && !isChatInitialized) {
+        const success = await chatbotService.initialize(riskResults);
+        setIsChatInitialized(success);
+      }
+    };
 
-    const newMessage: Message = {
+    initializeChat();
+  }, [riskResults, isFormComplete()]);
+
+  // Update handleChatSend to use the chatbot service
+  const handleChatSend = async () => {
+    if (!chatInput.trim() || !currentConversation || !chatbotService) return;
+
+    const userMessage: Message = {
       id: currentConversation.messages.length + 1,
       text: chatInput,
       sender: 'user',
       timestamp: new Date(),
     };
 
-    const updatedConversations = conversations.map(conv => {
+    // Update UI immediately with user message
+    setConversations(prev => prev.map(conv => {
       if (conv.id === currentConversationId) {
         return {
           ...conv,
-          messages: [...conv.messages, newMessage],
+          messages: [...conv.messages, userMessage],
           lastUpdated: new Date(),
         };
       }
       return conv;
-    });
+    }));
 
-    setConversations(updatedConversations);
     setChatInput('');
 
-    // Simulate AI response with context from risk results
-    setTimeout(() => {
-      let aiResponse = "I'm analyzing your input in the context of your risk assessment results. ";
+    try {
+      // Get response from Gemini
+      const aiResponseText = await chatbotService.sendMessage(chatInput);
       
-      if (isFormComplete()) {
-        const highestRisk = Object.entries(riskResults).reduce((a, b) => 
-          riskResults[a[0] as keyof RiskResults].score > riskResults[b[0] as keyof RiskResults].score ? a : b
-        );
-        aiResponse += `Based on your assessment, your highest risk area is ${highestRisk[0]} with a score of ${highestRisk[1].score}%. `;
-      }
-      
-      aiResponse += "I can help you understand these results and suggest improvements. What specific aspect would you like to explore?";
-
-      const response: Message = {
+      const aiMessage: Message = {
         id: currentConversation.messages.length + 2,
-        text: aiResponse,
+        text: aiResponseText,
+        sender: 'ai',
+        timestamp: new Date(),
+      };
+
+      // Update conversation with AI response
+      setConversations(prev => prev.map(conv => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            messages: [...conv.messages, aiMessage],
+            lastUpdated: new Date(),
+          };
+        }
+        return conv;
+      }));
+    } catch (error) {
+      console.error('Error getting chatbot response:', error);
+      
+      // Add error message to conversation
+      const errorMessage: Message = {
+        id: currentConversation.messages.length + 2,
+        text: "I apologize, but I encountered an error processing your request. Please try again.",
         sender: 'ai',
         timestamp: new Date(),
       };
@@ -1903,29 +1939,45 @@ const RiskQuantification = () => {
         if (conv.id === currentConversationId) {
           return {
             ...conv,
-            messages: [...conv.messages, response],
+            messages: [...conv.messages, errorMessage],
             lastUpdated: new Date(),
           };
         }
         return conv;
       }));
-    }, 1000);
+    }
   };
 
-  const handleNewChat = () => {
+  // Update handleNewChat to reinitialize the chatbot
+  const handleNewChat = async () => {
+    if (!chatbotService) return;
+
     const newConversation: Conversation = {
       id: conversations.length + 1,
       title: 'Risk Analysis Chat',
-      messages: [{
+      messages: [],
+      lastUpdated: new Date(),
+    };
+
+    try {
+      // Reinitialize the chatbot with current risk context
+      await chatbotService.initialize(isFormComplete() ? riskResults : undefined);
+
+      // Add initial AI message
+      const initialMessage: Message = {
         id: 1,
         text: "Hello! I'm your AI risk analysis assistant. I can help you understand your cyber risk assessment results and provide guidance on improving your security posture. What would you like to know?",
         sender: 'ai',
         timestamp: new Date(),
-      }],
-      lastUpdated: new Date(),
-    };
-    setConversations([...conversations, newConversation]);
-    setCurrentConversationId(newConversation.id);
+      };
+
+      newConversation.messages.push(initialMessage);
+      
+      setConversations([...conversations, newConversation]);
+      setCurrentConversationId(newConversation.id);
+    } catch (error) {
+      console.error('Error creating new chat:', error);
+    }
   };
 
   // Risk reduction analysis
