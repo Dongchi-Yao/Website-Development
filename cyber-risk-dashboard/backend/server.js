@@ -21,12 +21,17 @@ mongoose.connect(process.env.MONGODB_URI)
 
 // Routes
 import { register, login, getProfile } from './controllers/authController.js';
+import { calculateRisk, healthCheck } from './controllers/riskController.js';
 import { protect } from './middleware/authMiddleware.js';
 
 // Auth routes
 app.post('/api/auth/register', register);
 app.post('/api/auth/login', login);
 app.get('/api/auth/profile', protect, getProfile);
+
+// Risk quantification routes
+app.post('/api/risk/calculate', calculateRisk);
+app.get('/api/risk/health', healthCheck);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

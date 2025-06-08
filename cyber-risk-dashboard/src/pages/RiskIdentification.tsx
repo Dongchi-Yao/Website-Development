@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container,
   Typography,
@@ -56,6 +56,29 @@ const RiskIdentification = () => {
   const [currentConversationId, setCurrentConversationId] = useState(1);
   const [input, setInput] = useState('');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  // Add new state for risk probabilities
+  const [riskProbabilities, setRiskProbabilities] = useState<{
+    ransomware: number;
+    phishing: number;
+    dataBreach: number;
+    insiderAttack: number;
+    supplyChain: number;
+  } | null>(null);
+
+  // Subscribe to risk probability updates
+  useEffect(() => {
+    const eventSource = new EventSource('http://localhost:8000/stream');
+    
+    eventSource.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setRiskProbabilities(data);
+    };
+
+    return () => {
+      eventSource.close();
+    };
+  }, []);
 
   const currentConversation = conversations.find(conv => conv.id === currentConversationId);
 
@@ -210,6 +233,29 @@ const RiskIdentification = () => {
     doc.save(`risk-identification-chat-${currentConversation.id}.pdf`);
   };
 
+  // Add risk probability display component
+  const RiskProbabilityDisplay = () => {
+    if (!riskProbabilities) return null;
+
+    return (
+      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" gutterBottom>
+          Current Risk Levels
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+          {Object.entries(riskProbabilities).map(([risk, probability]) => (
+            <Chip
+              key={risk}
+              label={`${risk}: ${Math.round(probability * 100)}%`}
+              color={probability > 0.7 ? 'error' : probability > 0.4 ? 'warning' : 'success'}
+              sx={{ fontWeight: 'bold' }}
+            />
+          ))}
+        </Box>
+      </Paper>
+    );
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <motion.div
@@ -245,6 +291,8 @@ const RiskIdentification = () => {
             </Button>
           </Box>
         </Box>
+
+        <RiskProbabilityDisplay />
 
         <Box sx={{ display: 'flex', gap: 4 }}>
           <Box sx={{ flex: '2' }}>

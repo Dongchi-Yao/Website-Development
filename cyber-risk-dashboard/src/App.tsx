@@ -1,10 +1,10 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline, useMediaQuery, Box } from '@mui/material';
 import { useState, useMemo, useEffect } from 'react';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import Navbar from './components/Navbar';
 import Home from './pages/Home';
-import TopicModeling from './pages/TopicModeling';
-import RiskIdentification from './pages/RiskIdentification';
 import RiskQuantification from './pages/RiskQuantification';
 import Reports from './pages/Reports';
 import ProjectDetails from './pages/ProjectDetails';
@@ -125,23 +125,44 @@ function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <Router>
-        <Navbar onToggleColorMode={toggleColorMode} mode={mode} />
-        <Box sx={{ pt: { xs: 8, sm: 9 } }}>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/" element={<Home />} />
-            <Route path="/topic-modeling" element={<TopicModeling />} />
-            <Route path="/risk-identification" element={<RiskIdentification />} />
-            <Route path="/risk-quantification" element={<RiskQuantification />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/project-details/:projectId" element={<ProjectDetails />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Contact />} />
-          </Routes>
-        </Box>
-      </Router>
+      <AuthProvider>
+        <Router>
+          <Navbar onToggleColorMode={toggleColorMode} mode={mode} />
+          <Box sx={{ pt: { xs: 8, sm: 9 } }}>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/" element={<Home />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/contact" element={<Contact />} />
+              <Route 
+                path="/risk-quantification" 
+                element={
+                  <ProtectedRoute>
+                    <RiskQuantification />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/reports" 
+                element={
+                  <ProtectedRoute>
+                    <Reports />
+                  </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/project-details/:projectId" 
+                element={
+                  <ProtectedRoute>
+                    <ProjectDetails />
+                  </ProtectedRoute>
+                } 
+              />
+            </Routes>
+          </Box>
+        </Router>
+      </AuthProvider>
     </ThemeProvider>
   );
 }

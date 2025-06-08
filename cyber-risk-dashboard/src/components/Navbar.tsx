@@ -18,32 +18,27 @@ import {
   Switch,
   FormControlLabel,
   Divider,
+  Avatar,
   Menu,
   MenuItem,
-  Fade,
-  Paper,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
-import SecurityIcon from '@mui/icons-material/Security';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { styled } from '@mui/material/styles';
 import React from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface NavbarProps {
   onToggleColorMode: () => void;
   mode: 'light' | 'dark';
 }
 
-const toolItems = [
-  { name: 'Topic Modeling', path: '/topic-modeling' },
-  { name: 'Risk Identification', path: '/risk-identification' },
-  { name: 'Risk Quantification', path: '/risk-quantification' },
-];
-
 const navItems = [
   { name: 'Home', path: '/' },
+  { name: 'Risk Quantification', path: '/risk-quantification' },
   { name: 'Reports', path: '/reports' },
   { name: 'About', path: '/about' },
   { name: 'Contact', path: '/contact' },
@@ -60,71 +55,31 @@ const StyledLogo = styled('img')(({ theme }) => ({
 
 const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [toolsAnchorEl, setToolsAnchorEl] = useState<null | HTMLElement>(null);
-  const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const menuTimeoutRef = React.useRef<NodeJS.Timeout>();
-
-  const clearMenuTimeout = () => {
-    if (menuTimeoutRef.current) {
-      clearTimeout(menuTimeoutRef.current);
-      menuTimeoutRef.current = undefined;
-    }
-  };
-
-  const handleToolsMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setToolsAnchorEl(event.currentTarget);
-    setIsToolsMenuOpen(true);
-  };
-
-  const handleToolsMenuClose = () => {
-    setIsToolsMenuOpen(false);
-    setToolsAnchorEl(null);
-  };
-
-  const handleButtonMouseEnter = (event: React.MouseEvent<HTMLElement>) => {
-    setToolsAnchorEl(event.currentTarget);
-    setIsToolsMenuOpen(true);
-  };
-
-  // Clean up timeout on unmount
-  React.useEffect(() => {
-    return () => clearMenuTimeout();
-  }, []);
+  const { isAuthenticated, user, logout } = useAuth();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
   };
 
+  const handleUserMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleUserMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const handleLogout = () => {
+    logout();
+    handleUserMenuClose();
+  };
+
   const drawer = (
     <List>
-      <ListItem key="home" disablePadding>
-        <ListItemButton
-          component={RouterLink}
-          to="/"
-          onClick={handleDrawerToggle}
-        >
-          <ListItemText primary="Home" />
-        </ListItemButton>
-      </ListItem>
-      <ListItem key="tools" disablePadding>
-        <ListItemButton onClick={handleToolsMenuOpen}>
-          <ListItemText primary="Our Tools" />
-        </ListItemButton>
-      </ListItem>
-      {toolItems.map((item) => (
-        <ListItem key={item.name} disablePadding sx={{ pl: 4 }}>
-          <ListItemButton
-            component={RouterLink}
-            to={item.path}
-            onClick={handleDrawerToggle}
-          >
-            <ListItemText primary={item.name} />
-          </ListItemButton>
-        </ListItem>
-      ))}
-      {navItems.slice(1).map((item) => (
+      {navItems.map((item) => (
         <ListItem key={item.name} disablePadding>
           <ListItemButton
             component={RouterLink}
@@ -149,36 +104,75 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
         />
       </ListItem>
       <Divider sx={{ my: 1 }} />
-      <ListItem>
-        <Button
-          fullWidth
-          variant="outlined"
-          component={RouterLink}
-          to="/login"
-          onClick={handleDrawerToggle}
-          sx={{ 
-            fontSize: '0.75rem',
-            textTransform: 'none',
-          }}
-        >
-          Login
-        </Button>
-      </ListItem>
-      <ListItem>
-        <Button
-          fullWidth
-          variant="contained"
-          component={RouterLink}
-          to="/signup"
-          onClick={handleDrawerToggle}
-          sx={{ 
-            fontSize: '0.75rem',
-            textTransform: 'none',
-          }}
-        >
-          Sign Up
-        </Button>
-      </ListItem>
+      {isAuthenticated ? (
+        <>
+          <ListItem>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1 }}>
+              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                {user?.name?.charAt(0).toUpperCase()}
+              </Avatar>
+              <Box>
+                <Typography variant="body2" fontWeight="medium">
+                  {user?.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {user?.email}
+                </Typography>
+              </Box>
+            </Box>
+          </ListItem>
+          <ListItem>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<LogoutIcon />}
+              onClick={() => {
+                handleLogout();
+                handleDrawerToggle();
+              }}
+              sx={{ 
+                fontSize: '0.75rem',
+                textTransform: 'none',
+              }}
+            >
+              Logout
+            </Button>
+          </ListItem>
+        </>
+      ) : (
+        <>
+          <ListItem>
+            <Button
+              fullWidth
+              variant="outlined"
+              component={RouterLink}
+              to="/login"
+              onClick={handleDrawerToggle}
+              sx={{ 
+                fontSize: '0.75rem',
+                textTransform: 'none',
+              }}
+            >
+              Login
+            </Button>
+          </ListItem>
+          <ListItem>
+            <Button
+              fullWidth
+              variant="contained"
+              component={RouterLink}
+              to="/signup"
+              onClick={handleDrawerToggle}
+              sx={{ 
+                fontSize: '0.75rem',
+                textTransform: 'none',
+              }}
+            >
+              Sign Up
+            </Button>
+          </ListItem>
+        </>
+      )}
     </List>
   );
 
@@ -222,182 +216,7 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
             </IconButton>
           ) : (
             <Box sx={{ display: 'flex', flex: 1, justifyContent: 'center', alignItems: 'center', gap: 1 }}>
-              <Button
-                component={RouterLink}
-                to="/"
-                color="inherit"
-                sx={{ 
-                  fontSize: '0.75rem', 
-                  minWidth: 0, 
-                  px: 0.5,
-                  textTransform: 'none',
-                }}
-              >
-                Home
-              </Button>
-              <Box
-                onMouseLeave={handleToolsMenuClose}
-                sx={{ 
-                  display: 'inline-flex',
-                  position: 'relative',
-                }}
-              >
-                <Button
-                  color="inherit"
-                  onMouseEnter={handleButtonMouseEnter}
-                  aria-haspopup="true"
-                  aria-expanded={isToolsMenuOpen}
-                  aria-controls={isToolsMenuOpen ? 'tools-menu' : undefined}
-                  endIcon={
-                    <ExpandMoreIcon 
-                      sx={{ 
-                        transform: isToolsMenuOpen ? 'rotate(180deg)' : 'rotate(0)',
-                        transition: 'transform 0.2s ease-in-out',
-                      }} 
-                    />
-                  }
-                  sx={{ 
-                    fontSize: '0.75rem', 
-                    minWidth: 0, 
-                    px: 1.5,
-                    py: 0.75,
-                    textTransform: 'none',
-                    borderRadius: 1.5,
-                    transition: 'all 0.2s ease-in-out',
-                    backgroundColor: isToolsMenuOpen ? 
-                      (theme.palette.mode === 'dark' ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.04)') : 
-                      'transparent',
-                    '&:hover': {
-                      backgroundColor: theme.palette.mode === 'dark' ? 
-                        'rgba(255, 255, 255, 0.12)' : 
-                        'rgba(0, 0, 0, 0.08)',
-                    },
-                  }}
-                >
-                  Our Tools
-                </Button>
-                <Menu
-                  id="tools-menu"
-                  anchorEl={toolsAnchorEl}
-                  open={isToolsMenuOpen}
-                  onClose={handleToolsMenuClose}
-                  disableAutoFocus
-                  disableEnforceFocus
-                  disablePortal
-                  TransitionComponent={Fade}
-                  TransitionProps={{ timeout: 150 }}
-                  anchorOrigin={{
-                    vertical: 'bottom',
-                    horizontal: 'left',
-                  }}
-                  transformOrigin={{
-                    vertical: 'top',
-                    horizontal: 'left',
-                  }}
-                  MenuListProps={{
-                    'aria-label': 'Tools navigation',
-                    onMouseLeave: handleToolsMenuClose,
-                    style: { 
-                      display: 'flex', 
-                      flexDirection: 'row',
-                      padding: '6px',
-                      gap: '4px',
-                    }
-                  }}
-                  PaperProps={{
-                    elevation: 0,
-                    sx: {
-                      overflow: 'visible',
-                      filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.1))',
-                      mt: 0.5,
-                      minWidth: 400,
-                      backgroundColor: theme.palette.mode === 'dark' ? 
-                        'rgba(0, 0, 0, 0.85)' : 
-                        'rgba(255, 255, 255, 0.85)',
-                      backdropFilter: 'blur(8px)',
-                      borderRadius: 2,
-                      border: `1px solid ${
-                        theme.palette.mode === 'dark' ? 
-                          'rgba(255, 255, 255, 0.12)' : 
-                          'rgba(0, 0, 0, 0.12)'
-                      }`,
-                      '&:before': {
-                        content: '""',
-                        display: 'block',
-                        position: 'absolute',
-                        top: 0,
-                        left: 20,
-                        width: 10,
-                        height: 10,
-                        bgcolor: 'inherit',
-                        transform: 'translateY(-50%) rotate(45deg)',
-                        zIndex: 0,
-                        borderLeft: `1px solid ${
-                          theme.palette.mode === 'dark' ? 
-                            'rgba(255, 255, 255, 0.12)' : 
-                            'rgba(0, 0, 0, 0.12)'
-                        }`,
-                        borderTop: `1px solid ${
-                          theme.palette.mode === 'dark' ? 
-                            'rgba(255, 255, 255, 0.12)' : 
-                            'rgba(0, 0, 0, 0.12)'
-                        }`,
-                      },
-                    },
-                  }}
-                >
-                  {toolItems.map((item, index) => (
-                    <MenuItem
-                      key={item.name}
-                      component={RouterLink}
-                      to={item.path}
-                      onClick={handleToolsMenuClose}
-                      sx={{ 
-                        fontSize: '0.75rem',
-                        px: 2,
-                        py: 1,
-                        borderRadius: 1.5,
-                        flex: 1,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        textAlign: 'center',
-                        minWidth: 120,
-                        transition: 'all 0.2s ease-in-out',
-                        position: 'relative',
-                        overflow: 'hidden',
-                        '&:hover': {
-                          backgroundColor: theme.palette.mode === 'dark' ? 
-                            'rgba(255, 255, 255, 0.12)' : 
-                            'rgba(0, 0, 0, 0.08)',
-                          transform: 'translateY(-2px)',
-                        },
-                        '&:active': {
-                          transform: 'translateY(0)',
-                        },
-                        '&:after': {
-                          content: '""',
-                          position: 'absolute',
-                          bottom: 0,
-                          left: '50%',
-                          width: 0,
-                          height: 2,
-                          backgroundColor: theme.palette.primary.main,
-                          transition: 'all 0.2s ease-in-out',
-                        },
-                        '&:hover:after': {
-                          width: '80%',
-                          left: '10%',
-                        },
-                      }}
-                    >
-                      {item.name}
-                    </MenuItem>
-                  ))}
-                </Menu>
-              </Box>
-              {navItems.slice(1).map((item) => (
+              {navItems.map((item) => (
                 <Button
                   key={item.name}
                   component={RouterLink}
@@ -430,44 +249,107 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
             </Box>
           )}
 
-          {/* Right section with login/signup and logo */}
+          {/* Right section with login/signup or user menu and logo */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {!isMobile && (
               <>
-                <Button
-                  component={RouterLink}
-                  to="/login"
-                  color="inherit"
-                  variant="outlined"
-                  size="small"
-                  sx={{ 
-                    fontSize: '0.75rem',
-                    minWidth: 0,
-                    px: 1,
-                    borderColor: 'inherit',
-                    '&:hover': {
-                      borderColor: 'primary.main',
-                      color: 'primary.main',
-                    },
-                    textTransform: 'none',
-                  }}
-                >
-                  Login
-                </Button>
-                <Button
-                  component={RouterLink}
-                  to="/signup"
-                  variant="contained"
-                  size="small"
-                  sx={{ 
-                    fontSize: '0.75rem',
-                    minWidth: 0,
-                    px: 1,
-                    textTransform: 'none',
-                  }}
-                >
-                  Sign Up
-                </Button>
+                {isAuthenticated ? (
+                  <>
+                    <Tooltip title="Account">
+                      <IconButton
+                        onClick={handleUserMenuClick}
+                        color="inherit"
+                        size="small"
+                      >
+                        <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
+                          {user?.name?.charAt(0).toUpperCase()}
+                        </Avatar>
+                      </IconButton>
+                    </Tooltip>
+                    <Menu
+                      anchorEl={anchorEl}
+                      open={Boolean(anchorEl)}
+                      onClose={handleUserMenuClose}
+                      onClick={handleUserMenuClose}
+                      PaperProps={{
+                        elevation: 3,
+                        sx: {
+                          overflow: 'visible',
+                          filter: 'drop-shadow(0px 2px 8px rgba(0,0,0,0.32))',
+                          mt: 1.5,
+                          minWidth: 200,
+                          '&:before': {
+                            content: '""',
+                            display: 'block',
+                            position: 'absolute',
+                            top: 0,
+                            right: 14,
+                            width: 10,
+                            height: 10,
+                            bgcolor: 'background.paper',
+                            transform: 'translateY(-50%) rotate(45deg)',
+                            zIndex: 0,
+                          },
+                        },
+                      }}
+                      transformOrigin={{ horizontal: 'right', vertical: 'top' }}
+                      anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                    >
+                      <MenuItem disabled>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                          <Typography variant="body2" fontWeight="medium">
+                            {user?.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {user?.email}
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                      <Divider />
+                      <MenuItem onClick={handleLogout}>
+                        <LogoutIcon sx={{ mr: 1 }} />
+                        Logout
+                      </MenuItem>
+                    </Menu>
+                  </>
+                ) : (
+                  <>
+                    <Button
+                      component={RouterLink}
+                      to="/login"
+                      color="inherit"
+                      variant="outlined"
+                      size="small"
+                      sx={{ 
+                        fontSize: '0.75rem',
+                        minWidth: 0,
+                        px: 1,
+                        borderColor: 'inherit',
+                        '&:hover': {
+                          borderColor: 'primary.main',
+                          color: 'primary.main',
+                        },
+                        textTransform: 'none',
+                      }}
+                    >
+                      Login
+                    </Button>
+                    <Button
+                      component={RouterLink}
+                      to="/signup"
+                      variant="contained"
+                      size="small"
+                      sx={{ 
+                        fontSize: '0.75rem',
+                        minWidth: 0,
+                        px: 1,
+                        textTransform: 'none',
+                      }}
+                    >
+                      Sign Up
+                    </Button>
+                  </>
+                )}
               </>
             )}
             <Box sx={{ display: 'flex', alignItems: 'center', minWidth: 56 }}>

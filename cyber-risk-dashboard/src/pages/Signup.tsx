@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container,
   Paper,
@@ -9,12 +9,16 @@ import {
   Link,
   Alert,
   Snackbar,
+  CircularProgress,
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const Signup = () => {
   const navigate = useNavigate();
+  const { register, isLoading, isAuthenticated, error: authError, clearError } = useAuth();
+  
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -22,8 +26,20 @@ const Signup = () => {
     password: '',
     confirmPassword: '',
   });
-  const [error, setError] = useState('');
-  const [showSnackbar, setShowSnackbar] = useState(false);
+  const [localError, setLocalError] = useState('');
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
+
+  // Clear errors when component mounts
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -31,6 +47,13 @@ const Signup = () => {
       ...prev,
       [name]: value
     }));
+    // Clear errors when user starts typing
+    if (authError) {
+      clearError();
+    }
+    if (localError) {
+      setLocalError('');
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -38,18 +61,24 @@ const Signup = () => {
     
     // Basic validation
     if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
+      setLocalError('Passwords do not match');
       return;
     }
 
-    // TODO: Implement actual signup logic here
-    console.log('Signup attempt with:', formData);
-    
-    // For now, just show a success message
-    setShowSnackbar(true);
-    setTimeout(() => {
-      navigate('/login');
-    }, 1500);
+    if (formData.password.length < 6) {
+      setLocalError('Password must be at least 6 characters long');
+      return;
+    }
+
+    try {
+      const fullName = `${formData.firstName} ${formData.lastName}`.trim();
+      await register(fullName, formData.email, formData.password);
+      setShowSuccess(true);
+      // Navigation will be handled by useEffect when isAuthenticated changes
+    } catch (err) {
+      // Error is handled by the AuthContext
+      console.error('Registration failed:', err);
+    }
   };
 
   return (
@@ -129,9 +158,9 @@ const Signup = () => {
               onChange={handleChange}
             />
             
-            {error && (
+            {(authError || localError) && (
               <Alert severity="error" sx={{ mt: 2 }}>
-                {error}
+                {authError || localError}
               </Alert>
             )}
 
@@ -140,8 +169,10 @@ const Signup = () => {
               fullWidth
               variant="contained"
               sx={{ mt: 3, mb: 2, py: 1.5 }}
+              disabled={isLoading || !formData.email || !formData.password || !formData.firstName || !formData.lastName}
+              startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : null}
             >
-              Sign Up
+              {isLoading ? 'Creating Account...' : 'Sign Up'}
             </Button>
 
             <Box sx={{ textAlign: 'center' }}>
@@ -157,10 +188,10 @@ const Signup = () => {
         </Paper>
 
         <Snackbar
-          open={showSnackbar}
-          autoHideDuration={6000}
-          onClose={() => setShowSnackbar(false)}
-          message="Account created successfully! Redirecting to login..."
+          open={showSuccess}
+          autoHideDuration={3000}
+          onClose={() => setShowSuccess(false)}
+          message="Account created successfully! Welcome to your dashboard!"
         />
       </motion.div>
     </Container>

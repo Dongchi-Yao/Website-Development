@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Container,
   Paper,
@@ -9,18 +9,35 @@ import {
   Link,
   Alert,
   Snackbar,
+  CircularProgress,
 } from '@mui/material';
 import { motion } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login, isLoading, isAuthenticated, error, clearError } = useAuth();
+  
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
-  const [error, setError] = useState('');
-  const [showSnackbar, setShowSnackbar] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      const from = location.state?.from?.pathname || '/';
+      navigate(from, { replace: true });
+    }
+  }, [isAuthenticated, navigate, location]);
+
+  // Clear errors when component mounts
+  useEffect(() => {
+    clearError();
+  }, [clearError]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -28,18 +45,23 @@ const Login = () => {
       ...prev,
       [name]: value
     }));
+    // Clear errors when user starts typing
+    if (error) {
+      clearError();
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Implement actual login logic here
-    console.log('Login attempt with:', formData);
     
-    // For now, just show a success message
-    setShowSnackbar(true);
-    setTimeout(() => {
-      navigate('/dashboard');
-    }, 1500);
+    try {
+      await login(formData.email, formData.password);
+      setShowSuccess(true);
+      // Navigation will be handled by useEffect when isAuthenticated changes
+    } catch (err) {
+      // Error is handled by the AuthContext
+      console.error('Login failed:', err);
+    }
   };
 
   return (
@@ -94,8 +116,10 @@ const Login = () => {
               fullWidth
               variant="contained"
               sx={{ mt: 3, mb: 2, py: 1.5 }}
+              disabled={isLoading || !formData.email || !formData.password}
+              startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : null}
             >
-              Sign In
+              {isLoading ? 'Signing In...' : 'Sign In'}
             </Button>
 
             <Box sx={{ textAlign: 'center' }}>
@@ -119,9 +143,9 @@ const Login = () => {
         </Paper>
 
         <Snackbar
-          open={showSnackbar}
-          autoHideDuration={6000}
-          onClose={() => setShowSnackbar(false)}
+          open={showSuccess}
+          autoHideDuration={3000}
+          onClose={() => setShowSuccess(false)}
           message="Login successful! Redirecting..."
         />
       </motion.div>

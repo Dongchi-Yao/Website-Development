@@ -18,12 +18,20 @@ def set_seed(seed):
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+
 import pandas as pd
 import torch
-df = pd.read_csv('/content/drive/MyDrive/Paper 1-PostDoc/new_data.csv')
+import os
 
+# Set paths relative to script location
+script_dir = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(script_dir, "files needed-do not change")
+
+df = pd.read_csv(os.path.join(data_dir, 'new_data.csv'))
 
 user_data = [4, 3, 1, 4, 2, 2, 4, 5, 0, 0, 1, 2, 2, 1, 0, 1] # The inputs for the model
+
+
 
 feature_cols = df.columns[:-5]
 sample_feat  = pd.DataFrame([user_data], columns=feature_cols).astype(str)
@@ -35,27 +43,28 @@ df_hot["1.5_4"] = False
 df_hot = df_hot.reindex(sorted(df_hot.columns), axis=1)
 sample_tensor = torch.tensor(df_hot.tail(1).values.astype(int), dtype=torch.float)
 
+# Load model definition
+model_def_path = os.path.join(data_dir, 'mixture_of_experts_model_definition.py')
+with open(model_def_path) as file:
+    exec(file.read())
 
-file_paths = ['/content/drive/MyDrive/Paper 1-PostDoc/mixture_of_experts_model_definition.py']
-for file_path in file_paths:
-    with open(file_path) as file:
-        exec(file.read())
-group_info_2=torch.load('/content/drive/MyDrive/Paper 1-PostDoc/group_info_2.pth')
+group_info_2 = torch.load(os.path.join(data_dir, 'group_info_2.pth'))
 
-model_ft=MixtureOfExperts(group_info_2,
-                             hidden_dim        = 64,
-                             output_dim        = 5,
-                             expert_depth      = 1,
-                             expert_residual   = True,
-                             gating_use_mlp    = False,
-                             gating_hidden_dim = 128)
+model_ft = MixtureOfExperts(group_info_2,
+                         hidden_dim        = 64,
+                         output_dim        = 5,
+                         expert_depth      = 1,
+                         expert_residual   = True,
+                         gating_use_mlp    = False,
+                         gating_hidden_dim = 128)
 
-checkpoint = torch.load('/content/drive/MyDrive/Paper 1-PostDoc/best_model_ft.pth', map_location=torch.device('cpu'))
+checkpoint = torch.load(os.path.join(data_dir, 'best_model_ft.pth'), map_location=torch.device('cpu'))
 model_ft.load_state_dict(checkpoint['model_state_dict'])
 model_ft.eval()
 
 with torch.no_grad():
     logits = model_ft(sample_tensor)
     probs = torch.sigmoid(logits) # The probabilities for the five risk types
-threshold=0.375
-print (probs>=threshold) # Whether the risk event would happen according to the threshold
+threshold = 0.375
+print("Risk probabilities:", probs)
+print("Risk events (threshold >= 0.375):", probs >= threshold) # Whether the risk event would happen according to the threshold
