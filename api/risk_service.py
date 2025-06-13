@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import asyncio
 from sse_starlette.sse import EventSourceResponse
 import logging
+from risk_mitigation_strategy import RiskMitigationAnalyzer
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -35,6 +36,31 @@ class RiskInput(BaseModel):
 class RiskOutput(BaseModel):
     probabilities: List[float]
     risk_types: List[str] = ["ransomware", "phishing", "dataBreach", "insiderAttack", "supplyChain"]
+
+class MitigationRecommendation(BaseModel):
+    featureGroup: str
+    featureName: str
+    currentOption: str
+    recommendedOption: str
+    optionIndex: int
+    description: str
+
+class MitigationRound(BaseModel):
+    roundNumber: int
+    features: List[str]
+    currentRisk: float
+    projectedRisk: float
+    riskReduction: float
+    reductionPercentage: float
+    recommendations: List[MitigationRecommendation]
+
+class MitigationStrategy(BaseModel):
+    initialRisk: float
+    finalRisk: float
+    totalReduction: float
+    totalReductionPercentage: float
+    rounds: List[MitigationRound]
+    implementationPriority: str
 
 def set_seed(seed):
     import random
@@ -102,6 +128,16 @@ logger.info("Loading model and data...")
 model, df, group_info_2 = load_model_and_data()
 logger.info("Model and data loading completed")
 
+# Initialize risk mitigation analyzer
+mitigation_analyzer = None
+if model is not None and df is not None and group_info_2 is not None:
+    try:
+        mitigation_analyzer = RiskMitigationAnalyzer(model, df, group_info_2)
+        logger.info("Risk mitigation analyzer initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize risk mitigation analyzer: {str(e)}")
+        mitigation_analyzer = None
+
 def preprocess_input(user_data: List[int], df: pd.DataFrame) -> torch.Tensor:
     """Preprocess input data exactly as in script.py"""
     try:
@@ -146,7 +182,8 @@ async def health_check():
         "status": "healthy",
         "model_loaded": model is not None and df is not None,
         "model_type": str(type(model)) if model else None,
-        "data_shape": df.shape if df is not None else None
+        "data_shape": df.shape if df is not None else None,
+        "mitigation_analyzer_loaded": mitigation_analyzer is not None
     }
     logger.debug(f"Health check: {status}")
     return status
@@ -187,6 +224,52 @@ async def predict_risks(input_data: RiskInput) -> RiskOutput:
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+@app.post("/mitigation-strategy")
+async def generate_mitigation_strategy(input_data: RiskInput) -> MitigationStrategy:
+    """Generate risk mitigation strategy from input data"""
+    logger.debug(f"Received mitigation strategy request with data: {input_data.user_data}")
+    
+    if mitigation_analyzer is None:
+        logger.error("Mitigation analyzer not initialized")
+        raise HTTPException(status_code=500, detail="Mitigation analyzer not initialized")
+    
+    try:
+        # Generate mitigation strategy
+        strategy_data = mitigation_analyzer.generate_mitigation_strategy(input_data.user_data)
+        logger.debug(f"Mitigation strategy generated successfully")
+        
+        # Convert to Pydantic models
+        rounds = []
+        for round_data in strategy_data['rounds']:
+            recommendations = [
+                MitigationRecommendation(**rec) for rec in round_data['recommendations']
+            ]
+            round_obj = MitigationRound(
+                roundNumber=round_data['roundNumber'],
+                features=round_data['features'],
+                currentRisk=round_data['currentRisk'],
+                projectedRisk=round_data['projectedRisk'],
+                riskReduction=round_data['riskReduction'],
+                reductionPercentage=round_data['reductionPercentage'],
+                recommendations=recommendations
+            )
+            rounds.append(round_obj)
+        
+        strategy = MitigationStrategy(
+            initialRisk=strategy_data['initialRisk'],
+            finalRisk=strategy_data['finalRisk'],
+            totalReduction=strategy_data['totalReduction'],
+            totalReductionPercentage=strategy_data['totalReductionPercentage'],
+            rounds=rounds,
+            implementationPriority=strategy_data['implementationPriority']
+        )
+        
+        return strategy
+        
+    except Exception as e:
+        logger.error(f"Mitigation strategy generation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Mitigation strategy generation error: {str(e)}")
 
 @app.get("/stream")
 async def stream_risk_probabilities():

@@ -33,6 +33,9 @@ import {
   Avatar,
   ListItemAvatar,
   Drawer,
+  Dialog,
+  DialogContent,
+  DialogTitle,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -43,6 +46,8 @@ import ErrorIcon from '@mui/icons-material/Error';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DownloadIcon from '@mui/icons-material/Download';
 import SaveIcon from '@mui/icons-material/Save';
+import CheckIcon from '@mui/icons-material/Check';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos';
 import ArrowBackIosIcon from '@mui/icons-material/ArrowBackIos';
 import InfoIcon from '@mui/icons-material/Info';
@@ -58,6 +63,10 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { styled } from '@mui/material/styles';
 import ChatbotService from '../services/chatbotService';
+import { alpha } from '@mui/material/styles';
+import visualImage from '../assets/visual.png';
+import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Legend } from 'recharts';
+import RiskContextBadge from '../components/RiskContextBadge';
 
 interface ProjectInfo {
   // Section 1: Basic Project Information
@@ -71,11 +80,6 @@ interface ProjectInfo {
   layer1Teams: string;
   layer2Teams: string;
   layer3Teams: string;
-  layer4Teams: string;
-  layer5Teams: string;
-  layer6Teams: string;
-  layer7Teams: string;
-  layer8Teams: string;
   teamOverlap: string;
 
   // Section 3: Technical Factors
@@ -167,6 +171,34 @@ interface ChangeableProperty {
   label: string;
   description: string;
   changeable: boolean;
+}
+
+interface RiskMitigationRound {
+  roundNumber: number;
+  features: string[];
+  currentRisk: number;
+  projectedRisk: number;
+  riskReduction: number;
+  reductionPercentage: number;
+  recommendations: RiskMitigationRecommendation[];
+}
+
+interface RiskMitigationRecommendation {
+  featureGroup: string;
+  featureName: string;
+  currentOption: string;
+  recommendedOption: string;
+  optionIndex: number;
+  description: string;
+}
+
+interface RiskMitigationStrategy {
+  initialRisk: number;
+  finalRisk: number;
+  totalReduction: number;
+  totalReductionPercentage: number;
+  rounds: RiskMitigationRound[];
+  implementationPriority: 'high' | 'medium' | 'low';
 }
 
 // API service for risk calculation
@@ -358,13 +390,57 @@ const TooltipContent = styled('div')({
   }
 });
 
+const PulsingLoader = styled(CircularProgress)(({ theme }) => ({
+  animation: 'pulse 1.5s ease-in-out infinite',
+  '@keyframes pulse': {
+    '0%': {
+      opacity: 1,
+      transform: 'scale(1)',
+    },
+    '50%': {
+      opacity: 0.7,
+      transform: 'scale(1.1)',
+    },
+    '100%': {
+      opacity: 1,
+      transform: 'scale(1)',
+    },
+  },
+}));
+
+const TypingAnimation = styled(Box)(({ theme }) => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '8px 12px',
+  '& .dot': {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: theme.palette.text.secondary,
+    animation: 'typing 1.4s infinite ease-in-out',
+    '&:nth-of-type(1)': { animationDelay: '0s' },
+    '&:nth-of-type(2)': { animationDelay: '0.2s' },
+    '&:nth-of-type(3)': { animationDelay: '0.4s' },
+  },
+  '@keyframes typing': {
+    '0%, 60%, 100%': {
+      transform: 'scale(1)',
+      opacity: 0.5,
+    },
+    '30%': {
+      transform: 'scale(1.2)',
+      opacity: 1,
+    },
+  },
+}));
+
 const RiskQuantification = () => {
   const [activeSection, setActiveSection] = useState(0);
   const [slideDirection, setSlideDirection] = useState(0); // -1 for left, 1 for right
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>({
     projectDuration: '', projectType: '', hasCyberLegalTeam: '', companyScale: '', projectPhase: '',
-    layer1Teams: '', layer2Teams: '', layer3Teams: '', layer4Teams: '', layer5Teams: '', layer6Teams: '',
-    layer7Teams: '', layer8Teams: '', teamOverlap: '', hasITTeam: '', devicesWithFirewall: '', networkType: '',
+    layer1Teams: '', layer2Teams: '', layer3Teams: '', teamOverlap: '', hasITTeam: '', devicesWithFirewall: '', networkType: '',
     phishingFailRate: '', governanceLevel: '', allowPasswordReuse: '', usesMFA: '',
     regulatoryRequirements: '', stakeholderCount: '', thirdPartyVendors: '', remoteWorkLevel: '',
     cloudServices: '', dataClassification: '', bmsIntegration: '', accessControl: '',
@@ -412,7 +488,7 @@ const RiskQuantification = () => {
       title: 'Risk Analysis Chat',
       messages: [{
         id: 1,
-        text: "Hello! I'm your AI risk analysis assistant. I can help you understand your cyber risk assessment results and provide guidance on improving your security posture. What would you like to know?",
+        text: "Hello! I'm **Dr. CyberBuild**, your expert construction cybersecurity consultant. I specialize in analyzing cyber risks for construction projects and providing actionable security strategies. Once you complete your risk assessment, I'll have comprehensive insights about your project to offer specialized guidance. How can I assist you today?",
         sender: 'ai',
         timestamp: new Date(),
       }],
@@ -426,6 +502,12 @@ const RiskQuantification = () => {
   // Risk reduction state
   const [riskReductions, setRiskReductions] = useState<RiskReduction[]>([]);
   const [isAnalyzingReductions, setIsAnalyzingReductions] = useState(false);
+  const [riskMitigationStrategy, setRiskMitigationStrategy] = useState<RiskMitigationStrategy | null>(null);
+  const [selectedRound, setSelectedRound] = useState<number>(0);
+  const [preservedRound, setPreservedRound] = useState<number>(0);
+  const [appliedRecommendations, setAppliedRecommendations] = useState<Set<string>>(new Set());
+  const [applyingRecommendation, setApplyingRecommendation] = useState<string | null>(null);
+  const [isUpdatingStrategy, setIsUpdatingStrategy] = useState(false);
 
   // Changeable properties state
   const [changeableProperties, setChangeableProperties] = useState<ChangeableProperty[]>([
@@ -479,6 +561,9 @@ const RiskQuantification = () => {
   // Add new state for chatbot service
   const [chatbotService, setChatbotService] = useState<ChatbotService | null>(null);
   const [isChatInitialized, setIsChatInitialized] = useState(false);
+  const [isVisualDialogOpen, setIsVisualDialogOpen] = useState(false);
+  const [showRiskNumbers, setShowRiskNumbers] = useState(false);
+  const [isAiTyping, setIsAiTyping] = useState(false);
 
   const sections = ['Basic Info', 'Structure', 'Technical', 'Security'];
   const sectionDescriptions = [
@@ -555,7 +640,7 @@ const RiskQuantification = () => {
       updatedProjectInfo[field as keyof ProjectInfo] && updatedProjectInfo[field as keyof ProjectInfo] !== ''
     );
     
-    const hasAtLeastOneTeam = [1, 2, 3, 4, 5, 6, 7, 8].some(layer => {
+    const hasAtLeastOneTeam = [1, 2, 3].some(layer => {
       const value = updatedProjectInfo[`layer${layer}Teams` as keyof ProjectInfo];
       return value && value !== 'na' && value !== '';
     });
@@ -572,6 +657,13 @@ const RiskQuantification = () => {
           const results = await riskApiService.calculateRisk(updatedProjectInfo);
           setRiskResults(results);
         }
+        
+        // Also regenerate mitigation strategy if it exists
+        if (riskMitigationStrategy) {
+          console.log('🔄 Form field changed - regenerating mitigation strategy');
+          await generateMitigationWithUpdatedData(updatedProjectInfo);
+        }
+        
       } catch (error) {
         console.error('Risk calculation failed:', error);
         setApiError((error as Error).message || 'Failed to calculate risk scores');
@@ -794,7 +886,7 @@ const RiskQuantification = () => {
       // Organizational Structure Section
       addSectionHeader('ORGANIZATIONAL STRUCTURE');
       let hasTeamData = false;
-      for (let i = 1; i <= 8; i++) {
+      for (let i = 1; i <= 3; i++) {
         const value = projectInfo[`layer${i}Teams` as keyof ProjectInfo];
         if (value && value !== 'na') {
           addFieldRow(`Layer ${i} Teams`, value);
@@ -1009,83 +1101,175 @@ const RiskQuantification = () => {
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <Box
+      <Card
         sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 1
+            position: 'relative',
+          overflow: 'hidden',
+          borderRadius: 3,
+          background: `linear-gradient(135deg, ${getRiskColor(analysis.level)}15, ${getRiskColor(analysis.level)}05)`,
+          border: `2px solid ${getRiskColor(analysis.level)}`,
+          transition: 'all 0.3s ease-in-out',
+          '&:hover': {
+            transform: 'translateY(-4px)',
+            boxShadow: `0 8px 25px ${getRiskColor(analysis.level)}40`,
+          }
         }}
       >
-        <Typography variant="subtitle2" align="center">
-          {risk.charAt(0).toUpperCase() + risk.slice(1)}
-        </Typography>
-        <Box
-          sx={{
-            width: 70,
-            height: 70,
-            position: 'relative',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          {isLoading ? (
-            <CircularProgress 
-              size={70}
-              thickness={4}
+        <CardContent sx={{ p: 2, textAlign: 'center' }}>
+          {/* Risk Category Title */}
+          <Typography 
+            variant="subtitle1" 
+            fontWeight="bold" 
               sx={{ 
-                color: getRiskColor(analysis.level),
-                position: 'absolute'
-              }}
-            />
-          ) : (
-            <>
+              mb: 1.5,
+              color: 'text.primary',
+              fontSize: '0.95rem'
+            }}
+          >
+            {risk.charAt(0).toUpperCase() + risk.slice(1).replace(/([A-Z])/g, ' $1')}
+          </Typography>
+
+          {/* Risk Level/Score Display */}
+          <Box sx={{ position: 'relative', mb: 1.5 }}>
               <Box
                 sx={{
-                  width: '100%',
-                  height: '100%',
+                width: 60,
+                height: 60,
                   borderRadius: '50%',
-                  bgcolor: getRiskColor(analysis.level),
+                background: `linear-gradient(135deg, ${getRiskColor(analysis.level)}, ${getRiskColor(analysis.level)}CC)`,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  color: 'white',
-                  fontWeight: 'bold',
-                  fontSize: '1.2rem',
-                  transition: 'all 0.3s ease-in-out'
+                margin: '0 auto',
+                boxShadow: `0 4px 20px ${getRiskColor(analysis.level)}40`,
+                position: 'relative',
+                '&::before': {
+                  content: '""',
+                  position: 'absolute',
+                  inset: 2,
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.2)',
+                  backdropFilter: 'blur(10px)',
+                }
                 }}
               >
                 <motion.div
-                  key={analysis.score} // Force animation on score change
+                key={showRiskNumbers ? analysis.score : analysis.level}
                   initial={{ opacity: 0, scale: 0.5 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.3 }}
-                >
-                  {analysis.score}%
-                </motion.div>
-              </Box>
-            </>
-          )}
-        </Box>
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.2 }}
-        >
+                style={{
+                  position: 'relative',
+                  zIndex: 1,
+                  color: 'white',
+                  fontWeight: 'bold',
+                  textAlign: 'center',
+                  textShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                }}
+              >
+                {showRiskNumbers ? (
           <Typography
-            variant="caption"
+                    variant="h4" 
+                    component="div" 
             sx={{ 
-              color: getRiskColor(analysis.level),
-              fontWeight: 'bold'
+                      lineHeight: 1, 
+                      fontWeight: 'bold',
+                      fontSize: '1.8rem'
             }}
           >
+                    {Math.round(analysis.score)}%
+                  </Typography>
+                ) : (
+                  <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 'bold' }}>
             {analysis.level.toUpperCase()}
           </Typography>
+                )}
         </motion.div>
       </Box>
+          </Box>
+
+          {/* Risk Level Badge */}
+          <Chip
+            label={analysis.level.toUpperCase()}
+            size="small"
+            sx={{
+              bgcolor: getRiskColor(analysis.level),
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: '0.7rem',
+              '& .MuiChip-label': {
+                px: 1.5
+              }
+            }}
+          />
+        </CardContent>
+
+        {/* Decorative Corner Element */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            width: 30,
+            height: 30,
+            background: `linear-gradient(135deg, ${getRiskColor(analysis.level)}, transparent)`,
+            clipPath: 'polygon(100% 0%, 0% 100%, 100% 100%)',
+            opacity: 0.3
+          }}
+        />
+      </Card>
     </motion.div>
   );
+
+  // Calculate average risk score
+  const calculateAverageRisk = (): { score: number; level: 'low' | 'medium' | 'high' | 'critical' } => {
+    const scores = Object.values(riskResults).map(r => r.score);
+    const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
+    
+    let level: 'low' | 'medium' | 'high' | 'critical';
+    if (avgScore < 30) level = 'low';
+    else if (avgScore < 60) level = 'medium';
+    else if (avgScore < 85) level = 'high';
+    else level = 'critical';
+    
+    return { score: avgScore, level };
+  };
+
+  // Prepare data for spider chart
+  const getSpiderChartData = () => {
+    return [
+      {
+        risk: 'Ransomware',
+        value: riskResults.ransomware.score,
+        level: riskResults.ransomware.level,
+        fullMark: 100
+      },
+      {
+        risk: 'Phishing',
+        value: riskResults.phishing.score,
+        level: riskResults.phishing.level,
+        fullMark: 100
+      },
+      {
+        risk: 'Data Breach',
+        value: riskResults.dataBreach.score,
+        level: riskResults.dataBreach.level,
+        fullMark: 100
+      },
+      {
+        risk: 'Insider Attack',
+        value: riskResults.insiderAttack.score,
+        level: riskResults.insiderAttack.level,
+        fullMark: 100
+      },
+      {
+        risk: 'Supply Chain',
+        value: riskResults.supplyChain.score,
+        level: riskResults.supplyChain.level,
+        fullMark: 100
+      }
+    ];
+  };
 
   const renderRiskIndicators = () => {
     const completionPercentage = getCompletionPercentage();
@@ -1154,18 +1338,162 @@ const RiskQuantification = () => {
           </Box>
         ) : (
           <>
-            <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+            <Typography variant="h5" gutterBottom sx={{ mb: 4, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AssessmentIcon color="primary" />
               Risk Analysis Results
             </Typography>
+
+            {/* Average Risk Score */}
+            <Box sx={{ width: '100%', maxWidth: 600, mb: 4 }}>
+              <Typography variant="h6" gutterBottom align="center">
+                Overall Risk Assessment
+              </Typography>
+              {(() => {
+                const avgRisk = calculateAverageRisk();
+                return (
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                    <Box sx={{ width: '100%', position: 'relative' }}>
+                      <LinearProgress
+                        variant="determinate"
+                        value={avgRisk.score}
+                        sx={{
+                          height: 20,
+                          borderRadius: 10,
+                          backgroundColor: 'grey.200',
+                          '& .MuiLinearProgress-bar': {
+                            borderRadius: 10,
+                            backgroundColor: getRiskColor(avgRisk.level),
+                          }
+                        }}
+                      />
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '50%',
+                          transform: 'translate(-50%, -50%)',
+                          color: 'white',
+                          fontWeight: 'bold',
+                          textShadow: '1px 1px 2px rgba(0,0,0,0.7)'
+                        }}
+                      >
+                        {avgRisk.level.toUpperCase()} RISK
+                      </Typography>
+                    </Box>
+                  </Box>
+                );
+              })()}
+            </Box>
+
+            {/* Spider Chart and Individual Risk Levels */}
+            <Box sx={{ 
+              display: 'grid', 
+              gridTemplateColumns: { xs: '1fr', lg: '1fr 1fr' },
+              gap: 4,
+              width: '100%',
+              maxWidth: 1200
+            }}>
+              {/* Spider Chart */}
             <Box sx={{ 
               display: 'flex', 
-              justifyContent: 'space-around', 
+                flexDirection: 'column', 
               alignItems: 'center',
-              width: '100%'
+                p: 3,
+                bgcolor: 'background.paper',
+                borderRadius: 2,
+                boxShadow: 2
+              }}>
+                <Typography variant="h6" gutterBottom>
+                  Risk Profile Overview
+                </Typography>
+                <ResponsiveContainer width="100%" height={400}>
+                  <RadarChart data={getSpiderChartData()}>
+                    <PolarGrid gridType="polygon" />
+                    <PolarAngleAxis 
+                      dataKey="risk" 
+                      tick={{ fontSize: 12, fontWeight: 'bold' }}
+                    />
+                    <PolarRadiusAxis 
+                      angle={90} 
+                      domain={[0, 100]} 
+                      tick={{ fontSize: 10 }}
+                      tickCount={5}
+                    />
+                    <Radar
+                      name="Risk Level"
+                      dataKey="value"
+                      stroke="#4f46e5"
+                      fill="#4f46e5"
+                      fillOpacity={0.3}
+                      strokeWidth={3}
+                      dot={{ fill: '#4f46e5', strokeWidth: 2, r: 6 }}
+                    />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </Box>
+
+              {/* Individual Risk Levels */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                gap: 2,
+                p: 3,
+                bgcolor: 'background.paper',
+                borderRadius: 2,
+                boxShadow: 2
+              }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="h6" fontWeight="bold">
+                    Risk Categories
+                  </Typography>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={showRiskNumbers}
+                        onChange={(e) => setShowRiskNumbers(e.target.checked)}
+                        color="primary"
+                        size="small"
+                      />
+                    }
+                    label={
+                      <Typography variant="body2" color="text.secondary">
+                        Show Numbers
+                      </Typography>
+                    }
+                    sx={{ m: 0 }}
+                  />
+                </Box>
+
+                {/* AI Disclaimer */}
+                {showRiskNumbers && (
+                  <Alert 
+                    severity="info" 
+                    sx={{ 
+                      mb: 2,
+                      '& .MuiAlert-message': { fontSize: '0.8rem' }
+                    }}
+                    icon={<SmartToyIcon fontSize="small" />}
+                  >
+                    <Typography variant="caption" sx={{ fontWeight: 'medium' }}>
+                      <strong>Note:</strong> Risk levels (Low, Medium, High, Critical) provide more reliable guidance than specific percentages. 
+                      Use numerical scores as relative indicators rather than absolute measurements.
+                    </Typography>
+                  </Alert>
+                )}
+
+                <Box sx={{ 
+                  display: 'grid',
+                  gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' },
+                  gap: 2,
+                  maxWidth: 600,
+                  mx: 'auto'
             }}>
               {Object.entries(riskResults).map(([risk, analysis]) => (
                 <RiskIndicator key={risk} risk={risk} analysis={analysis} />
               ))}
+                </Box>
+              </Box>
             </Box>
           </>
         )}
@@ -1379,11 +1707,100 @@ const RiskQuantification = () => {
       
       // Structure Section
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <>
+          <Alert 
+            severity="info" 
+            sx={{ mb: 2 }}
+            iconMapping={{
+              info: <></>, // Remove the default info icon
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+              <IconButton 
+                size="small" 
+                color="info"
+                onClick={() => setIsVisualDialogOpen(true)}
+                sx={{ p: 0.25, mt: -0.25 }}
+              >
+                <InfoIcon fontSize="small" />
+              </IconButton>
+              <Box sx={{ flex: 1 }}>
           <Typography variant="body2">
-            <strong>Project Structure Analysis:</strong> Construction projects can be represented as graphs where teams are nodes and communications are edges. Teams in outer layers (higher numbers) might be smaller sub-teams/contractors with limited cybersecurity resources, while inner layer teams (lower numbers) could be larger teams with more resources and stronger cybersecurity focus. Communications crossing between layers increase cybersecurity risks such as data leakage, unauthorized access, and data tampering.
+                  <strong>Project Structure Analysis:</strong> Every construction project can be thought of as having layers, which represent different teams and their relationships:
           </Typography>
+                <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2 }}>
+                  <li>
+                    <Typography variant="body2">
+                      Layer 1 (innermost): Main project teams with direct control and typically stronger cybersecurity resources
+                    </Typography>
+                  </li>
+                  <li>
+                    <Typography variant="body2">
+                      Layer 2 & 3: Sub-teams or sub-contractors, often with varying levels of cybersecurity capabilities
+                    </Typography>
+                  </li>
+                  <li>
+                    <Typography variant="body2">
+                      If your project doesn't have sub-teams or sub-contractors, you would only use Layer 1
+                    </Typography>
+                  </li>
+                  <li>
+                    <Typography variant="body2">
+                      Click the info icon for a visual reference diagram
+                    </Typography>
+                  </li>
+                </Box>
+              </Box>
+            </Box>
         </Alert>
+
+          <Dialog
+            open={isVisualDialogOpen}
+            onClose={() => setIsVisualDialogOpen(false)}
+            maxWidth="md"
+            fullWidth
+            PaperProps={{
+              sx: {
+                borderRadius: 2,
+                boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
+              }
+            }}
+          >
+            <DialogTitle sx={{ 
+              pb: 1,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1
+            }}>
+              <SecurityIcon color="info" />
+              Project Structure Visualization
+            </DialogTitle>
+            <DialogContent>
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                alignItems: 'center',
+                p: 2 
+              }}>
+                <img 
+                  src={visualImage}
+                  alt="Project Structure Visualization" 
+                  style={{ 
+                    width: '100%',
+                    maxWidth: '800px',
+                    height: 'auto',
+                    display: 'block',
+                    borderRadius: '8px',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                  }} 
+                />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 3, maxWidth: '600px', textAlign: 'center' }}>
+                  This diagram illustrates how project teams are organized in layers. The innermost layer (Layer 1) represents main project teams, while outer layers (Layer 2 & 3) represent sub-teams and sub-contractors with varying levels of cybersecurity capabilities.
+                </Typography>
+              </Box>
+            </DialogContent>
+          </Dialog>
+        </>
         
         <Box 
           sx={{ 
@@ -1393,24 +1810,30 @@ const RiskQuantification = () => {
             width: '100%'
           }}
         >
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((layer) => (
+          {[1, 2, 3].map((layer) => (
             <FormFieldWithTooltip
               key={layer}
               label={`Layer ${layer} Teams`}
               tooltip={
                 <>
                   <Typography variant="body2">
-                    Number of teams at layer {layer} of your project structure.
+                    Number of teams in Layer {layer}
                   </Typography>
-                  <Typography variant="body2">
-                    Layer {layer === 1 ? '1 (innermost)' : layer === 8 ? '8 (outermost)' : layer} teams.
+                  <Typography variant="body2" sx={{ mt: 1, mb: 1 }}>
+                    {layer === 1 ? (
+                      'These are your main project teams that have direct control and typically stronger cybersecurity resources. Every project has at least one Layer 1 team.'
+                    ) : layer === 2 ? (
+                      'These are your first-level sub-teams or sub-contractors. Select "Not Applicable" if you don\'t have any sub-teams.'
+                    ) : (
+                      'These are your second-level sub-teams or sub-contractors. Select "Not Applicable" if you don\'t have this level of sub-teams.'
+                    )}
                   </Typography>
-                  <Typography variant="body2">Key considerations:</Typography>
+                  <Typography variant="body2">Key points:</Typography>
                   <ul>
-                    <li>Inner layers: Larger teams with more cybersecurity resources and awareness</li>
-                    <li>Outer layers: Smaller sub-teams/contractors with limited cybersecurity resources</li>
-                    <li>Be as accurate as possible to reflect the number of teams</li>
-                    <li>For large projects, provide reasonable estimates based on available information</li>
+                    <li>Select the number of teams in this layer</li>
+                    <li>Choose "Not Applicable" if you don't have teams in this layer</li>
+                    <li>For large projects, provide your best estimate</li>
+                    <li>Include both internal teams and contractors in your count</li>
                   </ul>
                 </>
               }
@@ -1715,16 +2138,18 @@ const RiskQuantification = () => {
 
     const arrowButtonStyle = (disabled: boolean) => ({
       bgcolor: disabled ? 'background.paper' : '#4f46e5', // New indigo color
-      color: disabled ? 'action.disabled' : 'white',
+      color: disabled ? 'text.disabled' : 'white',
       '&:hover': {
-        bgcolor: disabled ? 'background.paper' : '#3c35b5' // Darker shade for hover
+        bgcolor: disabled ? 'background.paper' : '#3c35b5', // Darker shade for hover
+        boxShadow: disabled ? 2 : 4,
       },
       boxShadow: 2,
       transition: 'all 0.2s ease',
-      width: 40,
-      height: 40,
+      width: 44,
+      height: 44,
+      border: `1px solid ${disabled ? 'rgba(0, 0, 0, 0.12)' : '#4f46e5'}`,
       '& .MuiSvgIcon-root': {
-        fontSize: 20,
+        fontSize: 24,
         ml: (direction: 'left' | 'right') => direction === 'left' ? -1 : 1
       }
     });
@@ -1826,7 +2251,7 @@ const RiskQuantification = () => {
     );
     
     // Check if at least one layer team is specified (not all "na")
-    const hasAtLeastOneTeam = [1, 2, 3, 4, 5, 6, 7, 8].some(layer => {
+    const hasAtLeastOneTeam = [1, 2, 3].some(layer => {
       const value = projectInfo[`layer${layer}Teams` as keyof ProjectInfo];
       return value && value !== 'na' && value !== '';
     });
@@ -1846,7 +2271,7 @@ const RiskQuantification = () => {
       projectInfo[field as keyof ProjectInfo] && projectInfo[field as keyof ProjectInfo] !== ''
     ).length;
     
-    const hasAtLeastOneTeam = [1, 2, 3, 4, 5, 6, 7, 8].some(layer => {
+    const hasAtLeastOneTeam = [1, 2, 3].some(layer => {
       const value = projectInfo[`layer${layer}Teams` as keyof ProjectInfo];
       return value && value !== 'na' && value !== '';
     });
@@ -1863,19 +2288,36 @@ const RiskQuantification = () => {
   // Initialize chatbot when component mounts or risk results change
   useEffect(() => {
     const initializeChat = async () => {
+      console.log('🔄 Chatbot initialization triggered:', {
+        hasService: !!chatbotService,
+        isFormComplete: isFormComplete(),
+        isChatInitialized,
+        hasProjectInfo: !!projectInfo.projectType,
+        hasRiskResults: Object.values(riskResults).some(r => r.score > 0),
+        hasStrategy: !!riskMitigationStrategy
+      });
+
       if (!chatbotService) {
         const service = new ChatbotService();
         setChatbotService(service);
-        const success = await service.initialize(isFormComplete() ? riskResults : undefined);
+        if (isFormComplete()) {
+          console.log('🤖 Initializing chatbot with full data');
+          const success = await service.initialize(projectInfo, riskResults, riskMitigationStrategy || undefined);
         setIsChatInitialized(success);
+        } else {
+          console.log('🤖 Initializing chatbot without data');
+          const success = await service.initialize();
+          setIsChatInitialized(success);
+        }
       } else if (isFormComplete() && !isChatInitialized) {
-        const success = await chatbotService.initialize(riskResults);
+        console.log('🤖 Re-initializing chatbot with full data');
+        const success = await chatbotService.initialize(projectInfo, riskResults, riskMitigationStrategy || undefined);
         setIsChatInitialized(success);
       }
     };
 
     initializeChat();
-  }, [riskResults, isFormComplete()]);
+  }, [riskResults, riskMitigationStrategy, isFormComplete()]);
 
   // Update handleChatSend to use the chatbot service
   const handleChatSend = async () => {
@@ -1900,11 +2342,15 @@ const RiskQuantification = () => {
       return conv;
     }));
 
+    const userInputText = chatInput;
     setChatInput('');
+    
+    // Show typing animation
+    setIsAiTyping(true);
 
     try {
       // Get response from Gemini
-      const aiResponseText = await chatbotService.sendMessage(chatInput);
+      const aiResponseText = await chatbotService.sendMessage(userInputText);
       
       const aiMessage: Message = {
         id: currentConversation.messages.length + 2,
@@ -1945,6 +2391,9 @@ const RiskQuantification = () => {
         }
         return conv;
       }));
+    } finally {
+      // Hide typing animation
+      setIsAiTyping(false);
     }
   };
 
@@ -1960,13 +2409,17 @@ const RiskQuantification = () => {
     };
 
     try {
-      // Reinitialize the chatbot with current risk context
-      await chatbotService.initialize(isFormComplete() ? riskResults : undefined);
+      // Reinitialize the chatbot with complete project context
+      if (isFormComplete()) {
+        await chatbotService.initialize(projectInfo, riskResults, riskMitigationStrategy || undefined);
+      } else {
+        await chatbotService.initialize();
+      }
 
       // Add initial AI message
       const initialMessage: Message = {
         id: 1,
-        text: "Hello! I'm your AI risk analysis assistant. I can help you understand your cyber risk assessment results and provide guidance on improving your security posture. What would you like to know?",
+        text: "Hello! I'm Dr. CyberBuild, your expert construction cybersecurity consultant. I have analyzed your project data and I'm ready to provide specialized guidance on enhancing your cybersecurity posture. What would you like to discuss?",
         sender: 'ai',
         timestamp: new Date(),
       };
@@ -1980,94 +2433,417 @@ const RiskQuantification = () => {
     }
   };
 
-  // Risk reduction analysis
-  const analyzeRiskReduction = async () => {
+  // Generate mitigation strategy with specific project info (used after applying changes)
+  const generateMitigationWithUpdatedData = async (updatedProjectInfo: ProjectInfo) => {
+    try {
+      // Convert project info to model input array exactly matching the training data values
+      const modelInput = [
+        // 1.1 Project Duration (0-4 scale)
+        ['<=3m', '3-6m', '6-12m', '12-24m', '>24m']
+          .indexOf(updatedProjectInfo.projectDuration),
+
+        // 1.2 Project Type (0-5 scale)
+        ['transportation', 'government', 'healthcare', 'commercial', 'residential', 'other']
+          .indexOf(updatedProjectInfo.projectType),
+
+        // 1.3 Has Cyber Legal Team (0-2 scale)
+        ['yes', 'no', 'unsure'].indexOf(updatedProjectInfo.hasCyberLegalTeam),
+
+        // 1.4 Company Scale (0-4 scale)
+        ['<=30', '31-60', '61-100', '101-150', '>150']
+          .indexOf(updatedProjectInfo.companyScale),
+
+        // 1.5 Project Phase (0-4 scale)
+        ['planning', 'design', 'construction', 'maintenance', 'demolition']
+          .indexOf(updatedProjectInfo.projectPhase),
+
+        // 2.1.1 Layer 1 Teams (0-5 scale)
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na']
+          .indexOf(updatedProjectInfo.layer1Teams),
+
+        // 2.1.2 Layer 2 Teams (0-5 scale)
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na']
+          .indexOf(updatedProjectInfo.layer2Teams),
+
+        // 2.1.3 Layer 3 Teams (0-5 scale)
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na']
+          .indexOf(updatedProjectInfo.layer3Teams),
+
+        // 2.2 Team Overlap (0-4 scale)
+        ['<=20', '21-40', '41-60', '61-80', '81-100']
+          .indexOf(updatedProjectInfo.teamOverlap),
+
+        // 3.1 Has IT Team (0-2 scale)
+        ['yes', 'no', 'unsure'].indexOf(updatedProjectInfo.hasITTeam),
+
+        // 3.2 Devices with Firewall (0-4 scale)
+        ['<=20', '21-40', '41-60', '61-80', '81-100']
+          .indexOf(updatedProjectInfo.devicesWithFirewall),
+
+        // 3.3 Network Type (0-2 scale)
+        ['public', 'private', 'both'].indexOf(updatedProjectInfo.networkType),
+
+        // 3.4 Phishing Fail Rate (0-4 scale)
+        ['<=20', '21-40', '41-60', '61-80', '81-100']
+          .indexOf(updatedProjectInfo.phishingFailRate),
+
+        // 4.1 Governance Level (0-4 scale)
+        ['level1', 'level2', 'level3', 'level4', 'level5']
+          .indexOf(updatedProjectInfo.governanceLevel),
+
+        // 4.2 Allow Password Reuse (0-1 scale)
+        ['yes', 'no'].indexOf(updatedProjectInfo.allowPasswordReuse),
+
+        // 4.3 Uses MFA (0-1 scale)
+        ['yes', 'no'].indexOf(updatedProjectInfo.usesMFA)
+      ];
+
+      // Call the mitigation strategy API
+      const response = await fetch('http://localhost:8000/mitigation-strategy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_data: modelInput }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Mitigation API Error:', errorData);
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const strategy = await response.json();
+      console.log('🔄 Mitigation Strategy Response (Updated Data):', strategy);
+      console.log('🔄 Updated form data sent to API:', modelInput);
+      
+      // Convert API response to our interface format
+      const convertedStrategy: RiskMitigationStrategy = {
+        initialRisk: strategy.initialRisk,
+        finalRisk: strategy.finalRisk,
+        totalReduction: strategy.totalReduction,
+        totalReductionPercentage: strategy.totalReductionPercentage,
+        implementationPriority: strategy.implementationPriority,
+        rounds: strategy.rounds.map((round: any) => ({
+          roundNumber: round.roundNumber,
+          features: round.features,
+          currentRisk: round.currentRisk,
+          projectedRisk: round.projectedRisk,
+          riskReduction: round.riskReduction,
+          reductionPercentage: round.reductionPercentage,
+          recommendations: round.recommendations.map((rec: any) => ({
+            featureGroup: rec.featureGroup,
+            featureName: rec.featureName,
+            currentOption: rec.currentOption,
+            recommendedOption: rec.recommendedOption,
+            optionIndex: rec.optionIndex,
+            description: rec.description
+          }))
+        }))
+      };
+
+      console.log('🔄 Setting updated strategy:', {
+        oldInitialRisk: riskMitigationStrategy?.initialRisk,
+        newInitialRisk: convertedStrategy.initialRisk,
+        oldTotalReduction: riskMitigationStrategy?.totalReductionPercentage,
+        newTotalReduction: convertedStrategy.totalReductionPercentage
+      });
+      
+      setRiskMitigationStrategy(convertedStrategy);
+      
+      // Update chatbot context with new strategy
+      if (chatbotService && isChatInitialized) {
+        try {
+          await chatbotService.updateContext(updatedProjectInfo, undefined, convertedStrategy);
+        } catch (error) {
+          console.error('Failed to update chatbot context:', error);
+        }
+      }
+      
+      // Preserve the current round - no round changes during silent updates
+       
+     } catch (error) {
+       console.error('Risk mitigation analysis failed:', error);
+       throw error;
+     }
+   };
+
+  // Risk mitigation analysis
+  const analyzeRiskMitigation = async () => {
     if (!isFormComplete()) return;
 
     setIsAnalyzingReductions(true);
     
-    // Simulate API call for risk reduction analysis
-    setTimeout(() => {
-      const allSuggestions: RiskReduction[] = [
-        {
-          parameter: "Multi-Factor Authentication",
-          parameterKey: "usesMFA",
-          currentValue: projectInfo.usesMFA === 'yes' ? 'Enabled' : 'Disabled',
-          suggestedValue: 'Enabled',
-          impact: 'Reduces unauthorized access risk',
-          riskReduction: projectInfo.usesMFA === 'no' ? 15 : 0,
-          changeable: changeableProperties.find(p => p.key === 'usesMFA')?.changeable || false
-        },
-        {
-          parameter: "Password Reuse Policy",
-          parameterKey: "allowPasswordReuse",
-          currentValue: projectInfo.allowPasswordReuse === 'yes' ? 'Allowed' : 'Not Allowed',
-          suggestedValue: 'Not Allowed',
-          impact: 'Prevents credential stuffing attacks',
-          riskReduction: projectInfo.allowPasswordReuse === 'yes' ? 12 : 0,
-          changeable: changeableProperties.find(p => p.key === 'allowPasswordReuse')?.changeable || false
-        },
-        {
-          parameter: "Firewall Coverage",
-          parameterKey: "devicesWithFirewall",
-          currentValue: projectInfo.devicesWithFirewall,
-          suggestedValue: '81-100%',
-          impact: 'Improves network security',
-          riskReduction: projectInfo.devicesWithFirewall === '<=20' ? 20 : 
-                       projectInfo.devicesWithFirewall === '21-40' ? 15 :
-                       projectInfo.devicesWithFirewall === '41-60' ? 10 :
-                       projectInfo.devicesWithFirewall === '61-80' ? 5 : 0,
-          changeable: changeableProperties.find(p => p.key === 'devicesWithFirewall')?.changeable || false
-        },
-        {
-          parameter: "Governance Level",
-          parameterKey: "governanceLevel",
-          currentValue: projectInfo.governanceLevel.replace('level', 'Level '),
-          suggestedValue: 'Level 5',
-          impact: 'Strengthens security practices',
-          riskReduction: projectInfo.governanceLevel === 'level1' ? 18 :
-                       projectInfo.governanceLevel === 'level2' ? 14 :
-                       projectInfo.governanceLevel === 'level3' ? 10 :
-                       projectInfo.governanceLevel === 'level4' ? 6 : 0,
-          changeable: changeableProperties.find(p => p.key === 'governanceLevel')?.changeable || false
-        },
-        {
-          parameter: "IT Team Presence",
-          parameterKey: "hasITTeam",
-          currentValue: projectInfo.hasITTeam === 'yes' ? 'Yes' : projectInfo.hasITTeam === 'no' ? 'No' : 'Unsure',
-          suggestedValue: 'Yes',
-          impact: 'Enables proactive security management',
-          riskReduction: projectInfo.hasITTeam !== 'yes' ? 16 : 0,
-          changeable: changeableProperties.find(p => p.key === 'hasITTeam')?.changeable || false
-        },
-        {
-          parameter: "Security Training Effectiveness",
-          parameterKey: "phishingFailRate",
-          currentValue: projectInfo.phishingFailRate,
-          suggestedValue: '≤20%',
-          impact: 'Reduces susceptibility to phishing attacks',
-          riskReduction: projectInfo.phishingFailRate === '81-100' ? 18 :
-                       projectInfo.phishingFailRate === '61-80' ? 14 :
-                       projectInfo.phishingFailRate === '41-60' ? 10 :
-                       projectInfo.phishingFailRate === '21-40' ? 6 : 0,
-          changeable: changeableProperties.find(p => p.key === 'phishingFailRate')?.changeable || false
-        }
+    try {
+      // Convert project info to model input array exactly matching the training data values
+      const modelInput = [
+        // 1.1 Project Duration (0-4 scale)
+        ['<=3m', '3-6m', '6-12m', '12-24m', '>24m']
+          .indexOf(projectInfo.projectDuration),
+
+        // 1.2 Project Type (0-5 scale)
+        ['transportation', 'government', 'healthcare', 'commercial', 'residential', 'other']
+          .indexOf(projectInfo.projectType),
+
+        // 1.3 Has Cyber Legal Team (0-2 scale)
+        ['yes', 'no', 'unsure'].indexOf(projectInfo.hasCyberLegalTeam),
+
+        // 1.4 Company Scale (0-4 scale)
+        ['<=30', '31-60', '61-100', '101-150', '>150']
+          .indexOf(projectInfo.companyScale),
+
+        // 1.5 Project Phase (0-4 scale)
+        ['planning', 'design', 'construction', 'maintenance', 'demolition']
+          .indexOf(projectInfo.projectPhase),
+
+        // 2.1.1 Layer 1 Teams (0-5 scale)
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na']
+          .indexOf(projectInfo.layer1Teams),
+
+        // 2.1.2 Layer 2 Teams (0-5 scale)
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na']
+          .indexOf(projectInfo.layer2Teams),
+
+        // 2.1.3 Layer 3 Teams (0-5 scale)
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na']
+          .indexOf(projectInfo.layer3Teams),
+
+        // 2.2 Team Overlap (0-4 scale)
+        ['<=20', '21-40', '41-60', '61-80', '81-100']
+          .indexOf(projectInfo.teamOverlap),
+
+        // 3.1 Has IT Team (0-2 scale)
+        ['yes', 'no', 'unsure'].indexOf(projectInfo.hasITTeam),
+
+        // 3.2 Devices with Firewall (0-4 scale)
+        ['<=20', '21-40', '41-60', '61-80', '81-100']
+          .indexOf(projectInfo.devicesWithFirewall),
+
+        // 3.3 Network Type (0-2 scale)
+        ['public', 'private', 'both'].indexOf(projectInfo.networkType),
+
+        // 3.4 Phishing Fail Rate (0-4 scale)
+        ['<=20', '21-40', '41-60', '61-80', '81-100']
+          .indexOf(projectInfo.phishingFailRate),
+
+        // 4.1 Governance Level (0-4 scale)
+        ['level1', 'level2', 'level3', 'level4', 'level5']
+          .indexOf(projectInfo.governanceLevel),
+
+        // 4.2 Allow Password Reuse (0-1 scale)
+        ['yes', 'no'].indexOf(projectInfo.allowPasswordReuse),
+
+        // 4.3 Uses MFA (0-1 scale)
+        ['yes', 'no'].indexOf(projectInfo.usesMFA)
       ];
 
-      // Filter to only show suggestions with potential risk reduction
-      const suggestions = allSuggestions
-        .filter(suggestion => suggestion.riskReduction > 0)
-        .sort((a, b) => {
-          // Sort by changeability first (changeable items first), then by risk reduction
-          if (a.changeable !== b.changeable) {
-            return a.changeable ? -1 : 1;
-          }
-          return b.riskReduction - a.riskReduction;
-        });
+      // Call the mitigation strategy API
+      const response = await fetch('http://localhost:8000/mitigation-strategy', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ user_data: modelInput }),
+      });
 
-      setRiskReductions(suggestions);
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Mitigation API Error:', errorData);
+        throw new Error(errorData.detail || `HTTP error! status: ${response.status}`);
+      }
+
+      const strategy = await response.json();
+      console.log('📊 Initial Mitigation Strategy Response:', strategy);
+      console.log('📊 Form data sent to API:', modelInput);
+      
+             // Convert API response to our interface format
+       const convertedStrategy: RiskMitigationStrategy = {
+        initialRisk: strategy.initialRisk,
+        finalRisk: strategy.finalRisk,
+        totalReduction: strategy.totalReduction,
+        totalReductionPercentage: strategy.totalReductionPercentage,
+        implementationPriority: strategy.implementationPriority,
+        rounds: strategy.rounds.map((round: any) => ({
+          roundNumber: round.roundNumber,
+          features: round.features,
+          currentRisk: round.currentRisk,
+          projectedRisk: round.projectedRisk,
+          riskReduction: round.riskReduction,
+          reductionPercentage: round.reductionPercentage,
+          recommendations: round.recommendations.map((rec: any) => ({
+            featureGroup: rec.featureGroup,
+            featureName: rec.featureName,
+            currentOption: rec.currentOption,
+            recommendedOption: rec.recommendedOption,
+            optionIndex: rec.optionIndex,
+            description: rec.description
+          }))
+        }))
+      };
+
+      setRiskMitigationStrategy(convertedStrategy);
+      
+      // Reset applied recommendations when manually refreshing
+      setAppliedRecommendations(new Set());
+      
+      // Reset to overview when refreshing manually
+      setSelectedRound(0);
+      
+    } catch (error) {
+      console.error('Risk mitigation analysis failed:', error);
+    } finally {
       setIsAnalyzingReductions(false);
-    }, 2000);
+    }
+  };
+
+  // Apply recommendation to form
+  const applyRecommendation = async (recommendation: RiskMitigationRecommendation) => {
+    const recommendationId = `${recommendation.featureGroup}-${recommendation.recommendedOption}`;
+    setApplyingRecommendation(recommendationId);
+    
+    try {
+      // Map feature groups to form fields
+      const fieldMapping: { [key: string]: keyof ProjectInfo } = {
+      '1.3': 'hasCyberLegalTeam',
+      '2.1.1': 'layer1Teams',
+      '2.1.2': 'layer2Teams', 
+      '2.1.3': 'layer3Teams',
+      '2.2': 'teamOverlap',
+      '3.1': 'hasITTeam',
+      '3.2': 'devicesWithFirewall',
+      '3.3': 'networkType',
+      '3.4': 'phishingFailRate',
+      '4.1': 'governanceLevel',
+      '4.2': 'allowPasswordReuse',
+      '4.3': 'usesMFA'
+    };
+
+    const fieldKey = fieldMapping[recommendation.featureGroup];
+    if (!fieldKey) {
+      console.warn(`No field mapping found for feature group: ${recommendation.featureGroup}`);
+      return;
+    }
+
+    // Map recommended options to form values
+    const getFormValue = (featureGroup: string, recommendedOption: string): string => {
+      switch (featureGroup) {
+        case '1.3': // Cybersecurity Legal Team
+          return recommendedOption === 'Yes' ? 'yes' : 'no';
+        case '2.1.1': // Layer 1 Teams
+        case '2.1.2': // Layer 2 Teams  
+        case '2.1.3': // Layer 3 Teams
+          if (recommendedOption === '>40') return '>40';
+          if (recommendedOption === '31-40') return '31-40';
+          if (recommendedOption === '21-30') return '21-30';
+          if (recommendedOption === '11-20') return '11-20';
+          if (recommendedOption === '≤10') return '<=10';
+          return 'na';
+        case '2.2': // Team Overlap
+          if (recommendedOption === '≤20%') return '<=20';
+          if (recommendedOption === '21-40%') return '21-40';
+          if (recommendedOption === '41-60%') return '41-60';
+          if (recommendedOption === '61-80%') return '61-80';
+          return '81-100';
+        case '3.1': // IT Team
+          return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
+        case '3.2': // Firewall Coverage
+          if (recommendedOption === '81-100%') return '81-100';
+          if (recommendedOption === '61-80%') return '61-80';
+          if (recommendedOption === '41-60%') return '41-60';
+          if (recommendedOption === '21-40%') return '21-40';
+          return '<=20';
+        case '3.3': // Network Type
+          if (recommendedOption === 'Private network') return 'private';
+          if (recommendedOption === 'Public network') return 'public';
+          return 'both';
+        case '3.4': // Phishing Failure Rate
+          if (recommendedOption === '≤20%') return '<=20';
+          if (recommendedOption === '21-40%') return '21-40';
+          if (recommendedOption === '41-60%') return '41-60';
+          if (recommendedOption === '61-80%') return '61-80';
+          return '81-100';
+        case '4.1': // Governance Level
+          if (recommendedOption === 'Level 5') return 'level5';
+          if (recommendedOption === 'Level 4') return 'level4';
+          if (recommendedOption === 'Level 3') return 'level3';
+          if (recommendedOption === 'Level 2') return 'level2';
+          return 'level1';
+        case '4.2': // Password Reuse
+          return recommendedOption === 'Not Allowed' ? 'no' : 'yes';
+        case '4.3': // MFA
+          return recommendedOption === 'Yes' ? 'yes' : 'no';
+        default:
+          return '';
+      }
+    };
+
+    const newValue = getFormValue(recommendation.featureGroup, recommendation.recommendedOption);
+    
+        // Update the form
+    const updatedProjectInfo = {
+      ...projectInfo,
+      [fieldKey]: newValue
+    };
+    
+    setProjectInfo(updatedProjectInfo);
+
+    // Recalculate risk analysis with updated data
+    setIsLoading(true);
+    setApiError(null);
+    
+    try {
+      if (useRandomResults) {
+        const results = generateRandomResults();
+        setRiskResults(results);
+      } else {
+        const results = await riskApiService.calculateRisk(updatedProjectInfo);
+        setRiskResults(results);
+      }
+      
+      // Delay the strategy refresh to allow for smooth UI transitions
+      setTimeout(async () => {
+        const currentRound = selectedRound; // Capture current round before update
+        setPreservedRound(currentRound); // Store it separately
+        setIsUpdatingStrategy(true);
+        
+        try {
+          console.log('🔧 Refreshing strategy with updated data...', updatedProjectInfo);
+          
+          // Also recalculate the base risk results to ensure everything is in sync
+          if (!useRandomResults) {
+            const freshRiskResults = await riskApiService.calculateRisk(updatedProjectInfo);
+            setRiskResults(freshRiskResults);
+            console.log('🔧 Updated risk results:', freshRiskResults);
+          }
+          
+          // Generate new strategy with the updated form data
+          await generateMitigationWithUpdatedData(updatedProjectInfo);
+          // Restore the round immediately and consistently
+          setSelectedRound(currentRound);
+          setIsUpdatingStrategy(false);
+        } catch (error) {
+          console.error('Strategy update failed:', error);
+          setSelectedRound(currentRound); // Restore even on error
+          setIsUpdatingStrategy(false);
+        }
+      }, 1500); // Longer delay to let the user see the "Applied" state
+      
+      // Mark recommendation as applied with more specific tracking
+      const persistentId = `${recommendation.featureGroup}-${recommendation.currentOption}-to-${recommendation.recommendedOption}`;
+      setAppliedRecommendations(prev => new Set([...prev, recommendationId, persistentId]));
+      
+      console.log(`Applied recommendation: ${recommendation.featureName} → ${recommendation.recommendedOption}`);
+    } catch (error) {
+      console.error('Risk recalculation failed:', error);
+      setApiError((error as Error).message || 'Failed to recalculate risk scores');
+    } finally {
+      setIsLoading(false);
+      setApplyingRecommendation(null);
+    }
+  } catch (error) {
+    console.error('Error applying recommendation:', error);
+    setApplyingRecommendation(null);
+  }
   };
 
   // Handle changeable property toggle
@@ -2079,14 +2855,15 @@ const RiskQuantification = () => {
     );
     // Re-analyze if we have existing results
     if (riskReductions.length > 0) {
-      analyzeRiskReduction();
+      analyzeRiskMitigation();
     }
   };
 
-  // Trigger risk reduction analysis when form is completed
+  // Trigger risk mitigation analysis when form is completed
   useEffect(() => {
-    if (isFormComplete() && riskReductions.length === 0) {
-      analyzeRiskReduction();
+    if (isFormComplete() && !riskMitigationStrategy) {
+      // This is the initial load - analyzeRiskMitigation already sets to overview
+      analyzeRiskMitigation();
     }
   }, [riskResults]);
 
@@ -2104,11 +2881,6 @@ const RiskQuantification = () => {
       layer1Teams: '11-20',
       layer2Teams: '21-30',
       layer3Teams: '<=10',
-      layer4Teams: 'na',
-      layer5Teams: 'na',
-      layer6Teams: 'na',
-      layer7Teams: 'na',
-      layer8Teams: 'na',
       teamOverlap: '41-60',
 
       // Section 3: Technical Factors
@@ -2152,8 +2924,7 @@ const RiskQuantification = () => {
   const clearForm = () => {
     setProjectInfo({
       projectDuration: '', projectType: '', hasCyberLegalTeam: '', companyScale: '', projectPhase: '',
-      layer1Teams: '', layer2Teams: '', layer3Teams: '', layer4Teams: '', layer5Teams: '', layer6Teams: '',
-      layer7Teams: '', layer8Teams: '', teamOverlap: '', hasITTeam: '', devicesWithFirewall: '', networkType: '',
+      layer1Teams: '', layer2Teams: '', layer3Teams: '', teamOverlap: '', hasITTeam: '', devicesWithFirewall: '', networkType: '',
       phishingFailRate: '', governanceLevel: '', allowPasswordReuse: '', usesMFA: '',
       regulatoryRequirements: '', stakeholderCount: '', thirdPartyVendors: '', remoteWorkLevel: '',
       cloudServices: '', dataClassification: '', bmsIntegration: '', accessControl: '',
@@ -2415,233 +3186,551 @@ const RiskQuantification = () => {
               {activeTab === 0 && (
                 <Box>
                   <Typography variant="h6" gutterBottom>
-                    Risk Reduction Recommendations
+                    Risk Mitigation Strategy
                   </Typography>
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    Configure which security properties you can realistically change in your organization, then view personalized recommendations:
+                    AI-powered analysis of optimal security improvements organized in implementation rounds for maximum risk reduction:
                   </Typography>
 
-                  {/* Changeable Properties Configuration */}
-                  <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                    <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <SecurityIcon color="primary" />
-                      Changeable Properties Configuration
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                      Select which security properties your organization can realistically modify:
-                    </Typography>
-                    <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 2 }}>
-                      {changeableProperties.map((property) => (
-                        <Box key={property.key} sx={{ 
-                          display: 'flex', 
-                          alignItems: 'flex-start', 
-                          gap: 2,
-                          p: 1.5,
-                          borderRadius: 1,
-                          bgcolor: property.changeable 
-                            ? (theme) => theme.palette.mode === 'dark' 
-                              ? 'success.dark' 
-                              : 'success.main'
-                            : 'background.paper',
-                          border: 1,
-                          borderColor: property.changeable 
-                            ? 'success.main' 
-                            : 'divider',
-                          transition: 'all 0.2s ease',
-                          opacity: property.changeable ? 1 : 0.7,
-                          '&:hover': {
-                            opacity: 1,
-                          }
-                        }}>
-                          <Switch
-                            checked={property.changeable}
-                            onChange={() => toggleChangeableProperty(property.key)}
-                            color="success"
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-track': {
-                                opacity: property.changeable ? 1 : 0.5,
-                              }
-                            }}
-                          />
-                          <Box sx={{ flex: 1 }}>
-                            <Typography 
-                              variant="body2" 
-                              fontWeight="medium" 
-                              gutterBottom
-                              sx={{ 
-                                color: property.changeable ? 'white' : 'text.primary' 
-                              }}
-                            >
-                              {property.label}
-                            </Typography>
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                color: property.changeable 
-                                  ? 'white' 
-                                  : 'text.secondary',
-                                opacity: property.changeable ? 0.9 : 0.8
-                              }}
-                            >
-                              {property.description}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      ))}
-                    </Box>
-                  </Paper>
-                  
-                  {isAnalyzingReductions ? (
+                  {(isAnalyzingReductions && !isUpdatingStrategy && !riskMitigationStrategy) ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
                       <CircularProgress sx={{ mb: 2 }} />
                       <Typography variant="body2" color="text.secondary">
-                        Analyzing your configuration for optimization opportunities...
-                      </Typography>
+                        Analyzing optimal risk mitigation strategy...
+                    </Typography>
                     </Box>
-                                     ) : riskReductions.length > 0 ? (
-                     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                       {/* Changeable Recommendations */}
-                       {riskReductions.filter(r => r.changeable).length > 0 && (
-                         <Box>
-                           <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                             <CheckCircleIcon color="success" />
-                             Actionable Recommendations (You can change these)
+                  ) : riskMitigationStrategy ? (
+                    <Box sx={{ position: 'relative' }}>
+                      {/* Subtle overlay during strategy updates */}
+                      <AnimatePresence>
+                        {isUpdatingStrategy && (
+                          <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.3 }}
+                            style={{
+                              position: 'absolute',
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              bottom: 0,
+                              backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                              backdropFilter: 'blur(2px)',
+                              zIndex: 10,
+                          display: 'flex', 
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              borderRadius: 8,
+                            }}
+                          >
+                            <Box sx={{ 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              alignItems: 'center',
+                          gap: 2,
+                              p: 3,
+                              borderRadius: 2,
+                              bgcolor: 'white',
+                              boxShadow: 2
+                            }}>
+                              <CircularProgress size={24} />
+                              <Typography variant="body2" color="text.secondary">
+                                Updating strategy...
+                              </Typography>
+                            </Box>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                      
+                      <Box>
+                      {/* Strategy Overview */}
+                      <Paper variant="outlined" sx={{ p: 3, mb: 3, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
+                        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <AutoFixHighIcon />
+                          Mitigation Strategy Overview
                            </Typography>
-                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                             {riskReductions.filter(r => r.changeable).map((reduction, index) => (
-                               <Card key={index} variant="outlined" sx={{ 
-                                 p: 2, 
-                                 border: 2,
-                                 borderColor: 'success.main',
-                                 bgcolor: (theme) => theme.palette.mode === 'dark' 
-                                   ? 'success.dark' 
-                                   : 'success.light'
-                               }}>
-                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                                   <Box sx={{ flex: 1 }}>
-                                     <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                                       {reduction.parameter}
+                        <Grid container spacing={3}>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" fontWeight="bold">
+                                {(riskMitigationStrategy.totalReductionPercentage).toFixed(1)}%
                                      </Typography>
-                                     <Box sx={{ display: 'flex', gap: 4, mb: 1 }}>
-                                       <Box>
-                                         <Typography variant="caption" color="text.secondary" display="block">
-                                           Current
+                              <Typography variant="body2">Total Risk Reduction</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" fontWeight="bold">
+                                {riskMitigationStrategy.rounds.length}
                                          </Typography>
-                                         <Typography variant="body2">
-                                           {reduction.currentValue}
+                              <Typography variant="body2">Implementation Rounds</Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" fontWeight="bold">
+                                {(riskMitigationStrategy.initialRisk * 100).toFixed(0)}%
                                          </Typography>
+                              <Typography variant="body2">Initial Risk</Typography>
                                        </Box>
-                                       <Box>
-                                         <Typography variant="caption" color="text.secondary" display="block">
-                                           Recommended
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h4" fontWeight="bold">
+                                {(riskMitigationStrategy.finalRisk * 100).toFixed(0)}%
                                          </Typography>
-                                         <Typography variant="body2" color="primary.main" fontWeight="medium">
-                                           {reduction.suggestedValue}
-                                         </Typography>
-                                       </Box>
-                                     </Box>
-                                     <Typography variant="body2" color="text.secondary">
-                                       {reduction.impact}
-                                     </Typography>
-                                   </Box>
-                                   <Box sx={{ textAlign: 'center', ml: 2 }}>
-                                     <Typography variant="caption" color="text.secondary" display="block">
-                                       Risk Reduction
-                                     </Typography>
-                                     <Chip
-                                       label={`-${reduction.riskReduction}%`}
-                                       color="success"
-                                       size="small"
-                                       sx={{ fontWeight: 'bold' }}
-                                     />
-                                   </Box>
-                                 </Box>
-                               </Card>
-                             ))}
-                           </Box>
-                         </Box>
-                       )}
+                              <Typography variant="body2">Final Risk</Typography>
+                            </Box>
+                          </Grid>
+                        </Grid>
+                      </Paper>
 
-                       {/* Non-changeable Recommendations */}
-                       {riskReductions.filter(r => !r.changeable).length > 0 && (
+                      {/* Round Selection */}
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="subtitle1" gutterBottom>
+                          Implementation Rounds
+                                         </Typography>
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                          <Chip
+                            label="Overview"
+                            onClick={() => !isUpdatingStrategy && setSelectedRound(0)}
+                            color={selectedRound === 0 ? "primary" : "default"}
+                            variant={selectedRound === 0 ? "filled" : "outlined"}
+                            disabled={isUpdatingStrategy}
+                          />
+                          {riskMitigationStrategy.rounds.map((round) => (
+                            <Chip
+                              key={round.roundNumber}
+                              label={`Round ${round.roundNumber}`}
+                              onClick={() => !isUpdatingStrategy && setSelectedRound(round.roundNumber)}
+                              color={selectedRound === round.roundNumber ? "primary" : "default"}
+                              variant={selectedRound === round.roundNumber ? "filled" : "outlined"}
+                              disabled={isUpdatingStrategy}
+                            />
+                          ))}
+                                       </Box>
+                                     </Box>
+
+                      {/* Round Content */}
+                      {(isUpdatingStrategy ? preservedRound : selectedRound) === 0 ? (
+                        // Overview of all rounds
+                        <Box>
+                          <Typography variant="h6" gutterBottom>
+                            Implementation Roadmap
+                                     </Typography>
+                          {riskMitigationStrategy.rounds.map((round, index) => (
+                            <Card key={round.roundNumber} sx={{ mb: 2 }}>
+                              <CardContent>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                  <Typography variant="h6">
+                                    Round {round.roundNumber}
+                                     </Typography>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                     <Chip
+                                      label={`-${round.reductionPercentage.toFixed(1)}%`}
+                                       color="success"
+                            size="small"
+                                    />
+                                    <Button
+                                      size="small"
+                                      onClick={() => setSelectedRound(round.roundNumber)}
+                                    >
+                                      View Details
+                                    </Button>
+                                   </Box>
+                                 </Box>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                  Focus Areas: {round.features.join(', ')}
+                                </Typography>
+                                <Box sx={{ position: 'relative', mb: 1 }}>
+                                  {/* Multi-segment progress bar */}
+                                  <Box
+                            sx={{
+                                      height: 12,
+                                      borderRadius: 6,
+                                      bgcolor: 'grey.200',
+                                      position: 'relative',
+                                      overflow: 'hidden',
+                                      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
+                                    }}
+                                  >
+                                                                         {/* Risk level after round implementation */}
+                                     <Box
+                                       sx={{
+                                         height: '100%',
+                                         width: `${(round.projectedRisk * 100)}%`,
+                                         background: (() => {
+                                           const riskPercent = round.projectedRisk * 100;
+                                           if (riskPercent < 30) {
+                                             return 'linear-gradient(90deg, #4caf50, #66bb6a)'; // Low risk - Green
+                                           } else if (riskPercent < 60) {
+                                             return 'linear-gradient(90deg, #ff9800, #ffb74d)'; // Medium risk - Orange
+                                           } else if (riskPercent < 85) {
+                                             return 'linear-gradient(90deg, #f44336, #ef5350)'; // High risk - Red
+                                           } else {
+                                             return 'linear-gradient(90deg, #d32f2f, #c62828)'; // Critical risk - Dark Red
+                                           }
+                                         })(),
+                                        borderRadius: 6,
+                                        position: 'relative',
+                                        transition: 'all 0.3s ease-in-out',
+                                        '&::after': {
+                                          content: '""',
+                                          position: 'absolute',
+                                          top: 0,
+                                          left: 0,
+                                          right: 0,
+                                          bottom: 0,
+                                          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
+                                          animation: 'shimmer 2s infinite',
+                                          '@keyframes shimmer': {
+                                            '0%': { transform: 'translateX(-100%)' },
+                                            '100%': { transform: 'translateX(100%)' }
+                                          }
+                              }
+                            }}
+                          />
+                                    
+                                    {/* Progress text overlay */}
+                                    <Box
+                              sx={{ 
+                                        position: 'absolute',
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center'
+                                      }}
+                                    >
+                            <Typography 
+                              variant="caption" 
+                              sx={{ 
+                                           color: 'white',
+                                           fontWeight: 'bold',
+                                           fontSize: '0.7rem',
+                                           textShadow: '0 1px 2px rgba(0,0,0,0.5)',
+                                           zIndex: 1
+                                         }}
+                                       >
+                                         {(round.projectedRisk * 100).toFixed(0)}% Risk
+                            </Typography>
+                          </Box>
+                        </Box>
+                                  
+                                                                     {/* Risk level indicators */}
+                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
+                                     <Typography variant="caption" color="text.secondary">
+                                       Reduction: {round.reductionPercentage.toFixed(1)}% → {(round.projectedRisk * 100).toFixed(0)}% risk remaining
+                      </Typography>
+                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                       <Box
+                                         sx={{
+                                           width: 8,
+                                           height: 8,
+                                           borderRadius: '50%',
+                                           bgcolor: (() => {
+                                             const riskPercent = round.projectedRisk * 100;
+                                             if (riskPercent < 30) return '#4caf50';      // Low risk - Green
+                                             else if (riskPercent < 60) return '#ff9800'; // Medium risk - Orange  
+                                             else if (riskPercent < 85) return '#f44336'; // High risk - Red
+                                             else return '#d32f2f';                       // Critical risk - Dark Red
+                                           })()
+                                         }}
+                                       />
+                                       <Typography variant="caption" color="text.secondary">
+                                         {(() => {
+                                           const riskPercent = round.projectedRisk * 100;
+                                           if (riskPercent < 30) return 'Low Risk';
+                                           else if (riskPercent < 60) return 'Medium Risk';
+                                           else if (riskPercent < 85) return 'High Risk';
+                                           else return 'Critical Risk';
+                                         })()}
+                                         </Typography>
+                                       </Box>
+                                       </Box>
+                                     </Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                                  Risk: {(round.currentRisk * 100).toFixed(0)}% → {(round.projectedRisk * 100).toFixed(0)}%
+                                     </Typography>
+                              </CardContent>
+                               </Card>
+                             ))}
+                           </Box>
+                      ) : (
+                        // Specific round details
+                        (() => {
+                          const currentRoundNumber = isUpdatingStrategy ? preservedRound : selectedRound;
+                          const round = riskMitigationStrategy.rounds.find(r => r.roundNumber === currentRoundNumber);
+                          if (!round) return null;
+
+                          return (
                          <Box>
-                           <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                             <WarningIcon color="warning" />
-                             Limited Impact Recommendations (Marked as unchangeable)
+                              <Typography variant="h6" gutterBottom>
+                                Round {round.roundNumber} - Implementation Details
                            </Typography>
-                           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                             These could provide risk reduction but are marked as unchangeable in your configuration.
+                              
+                              {/* Round Stats */}
+                              <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
+                                <Grid container spacing={2}>
+                                  <Grid item xs={6} sm={3}>
+                                    <Typography variant="body2" color="text.secondary">Risk Reduction</Typography>
+                                    <Typography variant="h6" color="success.main">
+                                      -{round.reductionPercentage.toFixed(1)}%
+                                    </Typography>
+                                  </Grid>
+                                  <Grid item xs={6} sm={3}>
+                                    <Typography variant="body2" color="text.secondary">Current Risk</Typography>
+                                    <Typography variant="h6">
+                                      {(round.currentRisk * 100).toFixed(0)}%
+                                    </Typography>
+                                  </Grid>
+                                  <Grid item xs={6} sm={3}>
+                                    <Typography variant="body2" color="text.secondary">Projected Risk</Typography>
+                                    <Typography variant="h6" color="primary.main">
+                                      {(round.projectedRisk * 100).toFixed(0)}%
+                                    </Typography>
+                                  </Grid>
+                                  <Grid item xs={6} sm={3}>
+                                    <Typography variant="body2" color="text.secondary">Focus Areas</Typography>
+                                    <Typography variant="h6">
+                                      {round.features.length}
+                                    </Typography>
+                                  </Grid>
+                                </Grid>
+                              </Paper>
+
+                              {/* Recommendations */}
+                              <Typography variant="subtitle1" gutterBottom>
+                                Recommended Changes
                            </Typography>
                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                             {riskReductions.filter(r => !r.changeable).map((reduction, index) => (
-                                                                <Card key={index} variant="outlined" sx={{ 
-                                   p: 2,
-                                   opacity: 0.7,
-                                   border: 1,
-                                   borderColor: 'warning.main',
+                                {round.recommendations.map((rec, index) => {
+                                  const recommendationId = `${rec.featureGroup}-${rec.recommendedOption}`;
+                                  const persistentId = `${rec.featureGroup}-${rec.currentOption}-to-${rec.recommendedOption}`;
+                                  // Check if this recommendation was applied via user interaction only
+                                  const isApplied = appliedRecommendations.has(recommendationId) || 
+                                                  appliedRecommendations.has(persistentId);
+                                  
+                                  return (
+                                    <motion.div
+                                      key={index}
+                                      layout
+                                      initial={{ opacity: 0, y: 20 }}
+                                      animate={{ 
+                                        opacity: 1, 
+                                        y: 0,
+                                        scale: isApplied ? [1, 1.02, 1] : 1,
+                                      }}
+                                      transition={{ 
+                                        duration: 0.3,
+                                        delay: index * 0.1,
+                                        scale: { duration: 0.5, times: [0, 0.5, 1] }
+                                      }}
+                                    >
+                                                                             <Card 
+                                         variant="outlined" 
+                                         sx={{
+                                           position: 'relative',
+                                           overflow: 'hidden',
+                                           ...(isApplied && {
                                    bgcolor: (theme) => theme.palette.mode === 'dark' 
-                                     ? 'warning.dark' 
-                                     : 'warning.light'
-                                 }}>
-                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                               ? 'rgba(76, 175, 80, 0.15)' 
+                                               : 'success.light',
+                                             borderColor: 'success.main',
+                                             boxShadow: (theme) => theme.palette.mode === 'dark'
+                                               ? '0 0 20px rgba(76, 175, 80, 0.4)'
+                                               : '0 0 20px rgba(76, 175, 80, 0.3)',
+                                             color: (theme) => theme.palette.mode === 'dark' 
+                                               ? 'success.light' 
+                                               : 'inherit',
+                                           })
+                                         }}
+                                      >
+                                                                                 {isApplied && (
+                                           <Box
+                                             sx={{
+                                               position: 'absolute',
+                                               top: 0,
+                                               left: 0,
+                                               right: 0,
+                                               height: 4,
+                                               bgcolor: 'success.main',
+                                               background: (theme) => theme.palette.mode === 'dark'
+                                                 ? 'linear-gradient(90deg, #66bb6a, #a5d6a7, #66bb6a)'
+                                                 : 'linear-gradient(90deg, #4caf50, #81c784, #4caf50)',
+                                               backgroundSize: '200% 100%',
+                                               animation: 'shimmer 2s infinite',
+                                               '@keyframes shimmer': {
+                                                 '0%': { backgroundPosition: '-200% 0' },
+                                                 '100%': { backgroundPosition: '200% 0' }
+                                               }
+                                             }}
+                                           />
+                                         )}
+                                        <CardContent>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                                    <Box sx={{ flex: 1 }}>
                                      <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                                       {reduction.parameter}
+                                            {rec.featureName}
                                      </Typography>
-                                     <Box sx={{ display: 'flex', gap: 4, mb: 1 }}>
+                                          <Typography 
+                                            variant="body2" 
+                                            sx={{ 
+                                              mb: 2,
+                                              color: isApplied 
+                                                ? (theme) => theme.palette.mode === 'dark' 
+                                                  ? 'rgba(255, 255, 255, 0.8)' 
+                                                  : 'text.secondary'
+                                                : 'text.secondary'
+                                            }}
+                                          >
+                                            {rec.description}
+                                          </Typography>
+                                        </Box>
+                                        {(() => {
+                                          const recommendationId = `${rec.featureGroup}-${rec.recommendedOption}`;
+                                          const persistentId = `${rec.featureGroup}-${rec.currentOption}-to-${rec.recommendedOption}`;
+                                          const isApplied = appliedRecommendations.has(recommendationId) || 
+                                                          appliedRecommendations.has(persistentId);
+                                          const isAlreadySet = rec.currentOption === rec.recommendedOption;
+                                          const isApplying = applyingRecommendation === recommendationId;
+                                          
+                                          return (
+                                            <Button
+                                              variant={isApplied ? "outlined" : isAlreadySet ? "outlined" : "contained"}
+                                              color={isApplied ? "success" : "primary"}
+                                              size="small"
+                                              onClick={() => !isApplied && !isAlreadySet && !isApplying && !isUpdatingStrategy && applyRecommendation(rec)}
+                                              disabled={isApplied || isAlreadySet || isApplying || isUpdatingStrategy}
+                                              sx={{ 
+                                                ml: 2, 
+                                                minWidth: 120,
+                                                transition: 'all 0.3s ease-in-out',
+                                                ...(isApplied && {
+                                                  bgcolor: (theme) => theme.palette.mode === 'dark' 
+                                                    ? 'rgba(76, 175, 80, 0.2)'
+                                                    : 'success.light',
+                                                  color: (theme) => theme.palette.mode === 'dark'
+                                                    ? 'success.light'
+                                                    : 'success.main',
+                                                  borderColor: 'success.main',
+                                                  '&:hover': {
+                                                    bgcolor: (theme) => theme.palette.mode === 'dark' 
+                                                      ? 'rgba(76, 175, 80, 0.25)'
+                                                      : 'success.light',
+                                                  }
+                                                }),
+                                                ...(isAlreadySet && !isApplied && {
+                                                  bgcolor: (theme) => theme.palette.mode === 'dark' 
+                                                    ? 'rgba(158, 158, 158, 0.12)'
+                                                    : 'grey.100',
+                                                  color: (theme) => theme.palette.mode === 'dark'
+                                                    ? 'grey.400'
+                                                    : 'grey.600',
+                                                  borderColor: (theme) => theme.palette.mode === 'dark'
+                                                    ? 'grey.700'
+                                                    : 'grey.300',
+                                                  '&:hover': {
+                                                    bgcolor: (theme) => theme.palette.mode === 'dark' 
+                                                      ? 'rgba(158, 158, 158, 0.15)'
+                                                      : 'grey.200',
+                                                  }
+                                                })
+                                              }}
+                                                                                             startIcon={
+                                                 isApplying ? (
+                                                   <PulsingLoader size={16} color="inherit" />
+                                                 ) : isApplied ? (
+                                                   <motion.div
+                                                     initial={{ rotate: 0, scale: 0 }}
+                                                     animate={{ rotate: 360, scale: 1 }}
+                                                     transition={{ 
+                                                       duration: 0.6, 
+                                                       type: "spring", 
+                                                       stiffness: 200,
+                                                       delay: 0.1 
+                                                     }}
+                                                   >
+                                                     <CheckIcon />
+                                                   </motion.div>
+                                                 ) : null
+                                               }
+                                            >
+                                              {isApplying ? (
+                                                <motion.div
+                                                  initial={{ opacity: 0 }}
+                                                  animate={{ opacity: 1 }}
+                                                  transition={{ duration: 0.2 }}
+                                                >
+                                                  Applying...
+                                                </motion.div>
+                                              ) : isApplied ? (
+                                                <motion.div
+                                                  initial={{ scale: 0.8, opacity: 0 }}
+                                                  animate={{ scale: 1, opacity: 1 }}
+                                                  transition={{ duration: 0.4, type: "spring", stiffness: 200 }}
+                                                >
+                                                  Applied
+                                                </motion.div>
+                                              ) : isAlreadySet ? (
+                                                "Already Set"
+                                              ) : (
+                                                "Apply Change"
+                                              )}
+                                            </Button>
+                                          );
+                                        })()}
+                                      </Box>
+                                      <Box sx={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                                        <Box>
                                          <Typography variant="caption" color="text.secondary" display="block">
                                            Current
                                          </Typography>
-                                         <Typography variant="body2">
-                                           {reduction.currentValue}
+                                          <Typography variant="body2" fontWeight="medium">
+                                            {rec.currentOption}
                                          </Typography>
+                                       </Box>
+                                        <Box sx={{ color: 'primary.main' }}>
+                                          →
                                        </Box>
                                        <Box>
                                          <Typography variant="caption" color="text.secondary" display="block">
                                            Recommended
                                          </Typography>
-                                         <Typography variant="body2" color="primary.main" fontWeight="medium">
-                                           {reduction.suggestedValue}
+                                          <Typography variant="body2" color="primary.main" fontWeight="bold">
+                                            {rec.recommendedOption}
                                          </Typography>
                                        </Box>
                                      </Box>
-                                     <Typography variant="body2" color="text.secondary">
-                                       {reduction.impact}
-                                     </Typography>
-                                   </Box>
-                                   <Box sx={{ textAlign: 'center', ml: 2 }}>
-                                     <Typography variant="caption" color="text.secondary" display="block">
-                                       Potential Reduction
-                                     </Typography>
-                                     <Chip
-                                       label={`-${reduction.riskReduction}%`}
-                                       color="warning"
-                                       size="small"
-                                       sx={{ fontWeight: 'bold' }}
-                                     />
-                                   </Box>
-                                 </Box>
+                                        </CardContent>
                                </Card>
-                             ))}
+                                     </motion.div>
+                                   );
+                                 })}
                            </Box>
                          </Box>
+                          );
+                        })()
                        )}
 
                        <Button
                          variant="outlined"
-                         onClick={analyzeRiskReduction}
-                         sx={{ alignSelf: 'flex-start', mt: 2 }}
+                        onClick={analyzeRiskMitigation}
+                        disabled={isAnalyzingReductions}
+                        startIcon={isAnalyzingReductions ? <CircularProgress size={16} /> : null}
+                        sx={{ alignSelf: 'flex-start', mt: 3 }}
                        >
-                         Refresh Analysis
+                         {isAnalyzingReductions ? 'Refreshing...' : 'Refresh Analysis'}
                        </Button>
                      </Box>
+                     </Box>
                   ) : (
-                    <Alert severity="success" sx={{ mb: 2 }}>
+                    <Alert severity="info" sx={{ mb: 2 }}>
                       <Typography variant="body2">
-                        Excellent! Your current configuration appears to be well-optimized for security. 
-                        No immediate high-impact improvements were identified.
+                        Complete the risk assessment to generate a personalized mitigation strategy.
                       </Typography>
                     </Alert>
                   )}
@@ -2740,11 +3829,24 @@ const RiskQuantification = () => {
                                    variant="body2" 
                                    sx={{ 
                                      mb: 1,
-                                     color: message.sender === 'user' ? 'white' : 'text.primary'
+                                     color: message.sender === 'user' ? 'white' : 'text.primary',
+                                     '& strong': {
+                                       fontWeight: 'bold',
+                                       color: message.sender === 'user' ? 'white' : 'primary.main'
+                                     },
+                                     '& em': {
+                                       fontStyle: 'italic'
+                                     },
+                                     whiteSpace: 'pre-wrap'
                                    }}
-                                 >
-                                   {message.text}
-                                 </Typography>
+                                   dangerouslySetInnerHTML={{
+                                     __html: message.text
+                                       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                       .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                                       .replace(/^[\s]*[-*]\s+/gm, '• ')
+                                       .replace(/^[\s]*(\d+)\.\s+/gm, '$1. ')
+                                   }}
+                                 />
                                  <Typography 
                                    variant="caption" 
                                    sx={{ 
@@ -2757,6 +3859,51 @@ const RiskQuantification = () => {
                                </Paper>
                             </ListItem>
                           ))}
+                          
+                          {/* Typing Animation */}
+                          {isAiTyping && (
+                            <ListItem
+                              sx={{
+                                flexDirection: 'row',
+                                alignItems: 'flex-start',
+                                mb: 2,
+                                px: 0,
+                              }}
+                            >
+                              <ListItemAvatar sx={{ minWidth: 48 }}>
+                                <Avatar sx={{ 
+                                  bgcolor: 'secondary.main',
+                                  width: 36,
+                                  height: 36
+                                }}>
+                                  <SmartToyIcon />
+                                </Avatar>
+                              </ListItemAvatar>
+                              <Paper
+                                elevation={1}
+                                sx={{
+                                  p: 1,
+                                  bgcolor: 'background.paper',
+                                  border: 1,
+                                  borderColor: 'divider',
+                                  ml: 1,
+                                  borderRadius: 2,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1
+                                }}
+                              >
+                                <TypingAnimation>
+                                  <Box className="dot" />
+                                  <Box className="dot" />
+                                  <Box className="dot" />
+                                </TypingAnimation>
+                                <Typography variant="caption" color="text.secondary">
+                                  Dr. CyberBuild is thinking...
+                                </Typography>
+                              </Paper>
+                            </ListItem>
+                          )}
                         </List>
 
                         <Divider />
@@ -2767,18 +3914,19 @@ const RiskQuantification = () => {
                               fullWidth
                               size="small"
                               variant="outlined"
-                              placeholder="Ask about your risk assessment results..."
+                              placeholder={isAiTyping ? "Dr. CyberBuild is responding..." : "Ask about your risk assessment results..."}
                               value={chatInput}
                               onChange={(e) => setChatInput(e.target.value)}
-                              onKeyPress={(e) => e.key === 'Enter' && handleChatSend()}
+                              onKeyPress={(e) => e.key === 'Enter' && !isAiTyping && handleChatSend()}
+                              disabled={isAiTyping}
                             />
                             <Button
                               variant="contained"
-                              endIcon={<SendIcon />}
+                              endIcon={isAiTyping ? <CircularProgress size={16} color="inherit" /> : <SendIcon />}
                               onClick={handleChatSend}
-                              disabled={!chatInput.trim()}
+                              disabled={!chatInput.trim() || isAiTyping}
                             >
-                              Send
+                              {isAiTyping ? 'Thinking...' : 'Send'}
                             </Button>
                           </Box>
                         </Box>
@@ -2797,14 +3945,14 @@ const RiskQuantification = () => {
                         
                         <List dense>
                           {[
-                            'Explain my highest risk areas',
-                            'What should I prioritize first?',
-                            'How do my scores compare to industry standards?',
-                            'What are the potential business impacts?',
-                            'How can I improve my governance level?',
-                            'What training should I provide to my team?',
-                            'How often should I reassess these risks?',
-                            'What compliance requirements should I consider?'
+                            'Analyze my construction project cyber risks',
+                            'What are the most critical vulnerabilities?',
+                            'How should I secure my project network?',
+                            'What vendor security requirements should I enforce?',
+                            'How can I protect BIM and project data?',
+                            'What incident response plan do I need?',
+                            'How do I secure construction site IoT devices?',
+                            'What compliance standards apply to my project?'
                           ].map((question, index) => (
                             <ListItem
                               key={index}
@@ -2831,16 +3979,16 @@ const RiskQuantification = () => {
                         </Typography>
                         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                           {Object.entries(riskResults).map(([risk, analysis]) => (
-                            <Chip
+                            <Box
                               key={risk}
-                              label={`${risk}: ${analysis.score}%`}
-                              size="small"
-                              color={analysis.level === 'critical' ? 'error' : 
-                                     analysis.level === 'high' ? 'warning' : 
-                                     analysis.level === 'medium' ? 'info' : 'success'}
                               onClick={() => setChatInput(`Tell me more about my ${risk} risk score of ${analysis.score}%`)}
                               sx={{ cursor: 'pointer' }}
+                            >
+                              <RiskContextBadge
+                                riskType={risk.replace(/([A-Z])/g, ' $1').trim()}
+                                score={analysis.score}
                             />
+                            </Box>
                           ))}
                         </Box>
                       </Paper>
