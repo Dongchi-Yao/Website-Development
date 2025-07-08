@@ -36,6 +36,8 @@ import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogActions,
+  Skeleton,
 } from '@mui/material';
 import type { SelectChangeEvent } from '@mui/material';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -59,14 +61,26 @@ import HistoryIcon from '@mui/icons-material/History';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import DeveloperModeIcon from '@mui/icons-material/DeveloperMode';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import UndoIcon from '@mui/icons-material/Undo';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { styled } from '@mui/material/styles';
 import ChatbotService from '../services/chatbotService';
+import { projectService } from '../services/projectService';
 import { alpha } from '@mui/material/styles';
-import visualImage from '../assets/visual.png';
+// Use public folder for visual image
+const visualImage = '/visual.png';
 import { RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, ResponsiveContainer, Legend } from 'recharts';
 import RiskContextBadge from '../components/RiskContextBadge';
+import LockIcon from '@mui/icons-material/Lock';
+import LockOpenIcon from '@mui/icons-material/LockOpen';
+import { useAuth } from '../contexts/AuthContext';
+import { RiskMitigationSection } from '../components/risk-mitigation';
+import { riskMitigationService } from '../services/riskMitigationService';
+import type { RiskMitigationRecommendation as ServiceRecommendation } from '../services/riskMitigationService';
 
 interface ProjectInfo {
   // Section 1: Basic Project Information
@@ -190,6 +204,12 @@ interface RiskMitigationRecommendation {
   recommendedOption: string;
   optionIndex: number;
   description: string;
+  enhancedDescription?: string;
+  costLevel?: number; // 1-4 scale for $ to $$$$
+  importance?: string;
+  riskReduction?: number;
+  riskReductionPercentage?: number;
+  calculatedRiskReduction?: number; // Individual risk reduction calculation
 }
 
 interface RiskMitigationStrategy {
@@ -436,6 +456,7 @@ const TypingAnimation = styled(Box)(({ theme }) => ({
 }));
 
 const RiskQuantification = () => {
+  const { isAdmin } = useAuth();
   const [activeSection, setActiveSection] = useState(0);
   const [slideDirection, setSlideDirection] = useState(0); // -1 for left, 1 for right
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>({
@@ -503,11 +524,15 @@ const RiskQuantification = () => {
   const [riskReductions, setRiskReductions] = useState<RiskReduction[]>([]);
   const [isAnalyzingReductions, setIsAnalyzingReductions] = useState(false);
   const [riskMitigationStrategy, setRiskMitigationStrategy] = useState<RiskMitigationStrategy | null>(null);
-  const [selectedRound, setSelectedRound] = useState<number>(0);
+  const [selectedRound, setSelectedRound] = useState(0);
   const [preservedRound, setPreservedRound] = useState<number>(0);
   const [appliedRecommendations, setAppliedRecommendations] = useState<Set<string>>(new Set());
   const [applyingRecommendation, setApplyingRecommendation] = useState<string | null>(null);
   const [isUpdatingStrategy, setIsUpdatingStrategy] = useState(false);
+  const [lockedRecommendations, setLockedRecommendations] = useState<Set<string>>(new Set());
+  const [enhancedDescriptions, setEnhancedDescriptions] = useState<Map<string, ServiceRecommendation>>(new Map());
+  const [loadingRecommendations, setLoadingRecommendations] = useState<Set<string>>(new Set());
+  const [allRecommendationsLoaded, setAllRecommendationsLoaded] = useState<boolean>(false);
 
   // Changeable properties state
   const [changeableProperties, setChangeableProperties] = useState<ChangeableProperty[]>([
@@ -565,6 +590,26 @@ const RiskQuantification = () => {
   const [showRiskNumbers, setShowRiskNumbers] = useState(false);
   const [isAiTyping, setIsAiTyping] = useState(false);
 
+  // Save project state
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [projectName, setProjectName] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Recommended questions state
+  const [recommendedQuestions, setRecommendedQuestions] = useState<string[]>([
+    'Analyze my construction project cyber risks',
+    'What are the most critical vulnerabilities?',
+    'How should I secure my project network?',
+    'What vendor security requirements should I enforce?',
+    'How can I protect BIM and project data?',
+    'What incident response plan do I need?',
+    'How do I secure construction site IoT devices?',
+    'What compliance standards apply to my project?'
+  ]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+
   const sections = ['Basic Info', 'Structure', 'Technical', 'Security'];
   const sectionDescriptions = [
     'The Overall Information of the Project - This section collects the overall information of the project through all phases. It is suggested that a project manager familiar with the overall project finish this section.',
@@ -573,30 +618,139 @@ const RiskQuantification = () => {
     'Management and Human Factors - These factors include leadership commitment, workforce knowledge, corporate governance, ethical practices, and stakeholder engagement. They establish a strong cybersecurity foundation and promote a culture of security within the project. It is suggested to be completed by a project manager from your company involved in this project.'
   ];
 
-  const generateRandomResults = (): RiskResults => {
-    const generateRandomAnalysis = (): RiskAnalysis => {
-      const score = Math.floor(Math.random() * 101);
-      let level: 'low' | 'medium' | 'high' | 'critical';
-      if (score < 30) level = 'low';
-      else if (score < 60) level = 'medium';
-      else if (score < 85) level = 'high';
-      else level = 'critical';
-
-      const recommendations = [
-        'Implement basic cybersecurity measures',
-        'Conduct regular security audits',
-        'Update security policies and procedures'
-      ];
-
-      return { score, level, recommendations };
+  // Component to properly render formatted message content
+  const MessageContent = ({ message }: { message: Message }) => {
+    const formatMessageText = (text: string) => {
+      // Handle the formatted text from our enhanced formatResponse method
+      const parts: React.ReactNode[] = [];
+      let currentIndex = 0;
+      
+      // Regular expression to match various formatting patterns
+      const formatRegex = /<strong[^>]*>(.*?)<\/strong>|<em>(.*?)<\/em>|(\*[^*]*(?:IMMEDIATE|URGENT|CRITICAL)[^*]*\*)|(\n• .*?)(?=\n|$)|(\n\d+\. .*?)(?=\n|$)/g;
+      
+      let match;
+      while ((match = formatRegex.exec(text)) !== null) {
+        // Add text before the match
+        if (match.index > currentIndex) {
+          const beforeText = text.slice(currentIndex, match.index);
+          if (beforeText.trim()) {
+            parts.push(<span key={`text-${match.index}`}>{beforeText}</span>);
+          }
+        }
+        
+        if (match[1]) {
+          // Bold text (strong)
+          parts.push(<strong key={`bold-${match.index}`}>{match[1]}</strong>);
+        } else if (match[2]) {
+          // Italic text (em)
+          parts.push(<em key={`italic-${match.index}`}>{match[2]}</em>);
+        } else if (match[3]) {
+          // Urgent action markers
+          parts.push(
+            <Box 
+              key={`urgent-${match.index}`}
+              component="span" 
+              sx={{ 
+                color: '#d32f2f', 
+                fontWeight: 'bold',
+                backgroundColor: 'rgba(211, 47, 47, 0.1)',
+                padding: '2px 6px',
+                borderRadius: '4px',
+                display: 'inline-block',
+                margin: '2px 0',
+                fontSize: '0.9em'
+              }}
+            >
+              {match[3]}
+            </Box>
+          );
+        } else if (match[4]) {
+          // Bullet points
+          parts.push(
+            <Box key={`bullet-${match.index}`} component="div" sx={{ ml: 2, my: 0.5, lineHeight: 1.4 }}>
+              {match[4].trim()}
+            </Box>
+          );
+        } else if (match[5]) {
+          // Numbered lists
+          parts.push(
+            <Box key={`numbered-${match.index}`} component="div" sx={{ ml: 2, my: 0.5, lineHeight: 1.4 }}>
+              {match[5].trim()}
+            </Box>
+          );
+        }
+        
+        currentIndex = match.index + match[0].length;
+      }
+      
+      // Add remaining text
+      if (currentIndex < text.length) {
+        const remainingText = text.slice(currentIndex);
+        if (remainingText.trim()) {
+          parts.push(<span key="remaining">{remainingText}</span>);
+        }
+      }
+      
+      // If no special formatting found, fall back to simple bold/italic parsing
+      if (parts.length === 0) {
+        return text
+          .split(/(\*\*.*?\*\*|\*.*?\*)/g)
+          .map((part, index) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return <strong key={`fallback-bold-${index}`}>{part.slice(2, -2)}</strong>;
+            } else if (part.startsWith('*') && part.endsWith('*') && !part.includes('IMMEDIATE') && !part.includes('URGENT') && !part.includes('CRITICAL')) {
+              return <em key={`fallback-italic-${index}`}>{part.slice(1, -1)}</em>;
+            }
+            return <span key={`fallback-text-${index}`}>{part}</span>;
+          });
+      }
+      
+      return parts;
     };
 
+    // Handle line breaks and create proper paragraph structure
+    const lines = message.text.split('\n');
+    const formattedContent = lines.map((line, lineIndex) => {
+      if (line.trim() === '') {
+        return <br key={`br-${lineIndex}`} />;
+      }
+      
+      const formattedLine = formatMessageText(line);
+      return (
+        <Box key={`line-${lineIndex}`} component="span" sx={{ display: 'block', mb: line.includes('•') || line.match(/^\d+\./) ? 0 : 0.5 }}>
+          {formattedLine}
+        </Box>
+      );
+    });
+
+    return <>{formattedContent}</>;
+  };
+
+  const generateRandomResults = (): RiskResults => {
+    // Helper to generate a score more likely to be high/critical
+    const weightedScore = () => {
+      const r = Math.random();
+      if (r < 0.1) return Math.floor(30 + Math.random() * 30); // 10% medium (30-59)
+      if (r < 0.7) return Math.floor(60 + Math.random() * 25); // 60% high (60-84)
+      return Math.floor(85 + Math.random() * 15); // 30% critical (85-99)
+    };
+    const getLevel = (score: number): 'low' | 'medium' | 'high' | 'critical' => {
+      if (score < 30) return 'low';
+      if (score < 60) return 'medium';
+      if (score < 85) return 'high';
+      return 'critical';
+    };
+    const recommendations = [
+      'Implement basic cybersecurity measures',
+      'Conduct regular security audits',
+      'Update security policies and procedures'
+    ];
     return {
-      ransomware: generateRandomAnalysis(),
-      phishing: generateRandomAnalysis(),
-      dataBreach: generateRandomAnalysis(),
-      insiderAttack: generateRandomAnalysis(),
-      supplyChain: generateRandomAnalysis()
+      ransomware: (() => { const score = weightedScore(); return { score, level: getLevel(score), recommendations }; })(),
+      phishing: (() => { const score = weightedScore(); return { score, level: getLevel(score), recommendations }; })(),
+      dataBreach: (() => { const score = weightedScore(); return { score, level: getLevel(score), recommendations }; })(),
+      insiderAttack: (() => { const score = weightedScore(); return { score, level: getLevel(score), recommendations }; })(),
+      supplyChain: (() => { const score = weightedScore(); return { score, level: getLevel(score), recommendations }; })(),
     };
   };
 
@@ -2285,6 +2439,73 @@ const RiskQuantification = () => {
   // Chatbot functions
   const currentConversation = conversations.find(conv => conv.id === currentConversationId);
 
+  // Calculate individual risk reductions for recommendations
+  const calculateIndividualRiskReductions = async (recommendations: RiskMitigationRecommendation[]) => {
+    try {
+      // Convert project info to model input
+      const modelInput = [
+        ['<=3m', '3-6m', '6-12m', '12-24m', '>24m'].indexOf(projectInfo.projectDuration),
+        ['transportation', 'government', 'healthcare', 'commercial', 'residential', 'other'].indexOf(projectInfo.projectType),
+        ['yes', 'no', 'unsure'].indexOf(projectInfo.hasCyberLegalTeam),
+        ['<=30', '31-60', '61-100', '101-150', '>150'].indexOf(projectInfo.companyScale),
+        ['planning', 'design', 'construction', 'maintenance', 'demolition'].indexOf(projectInfo.projectPhase),
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na'].indexOf(projectInfo.layer1Teams),
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na'].indexOf(projectInfo.layer2Teams),
+        ['<=10', '11-20', '21-30', '31-40', '>40', 'na'].indexOf(projectInfo.layer3Teams),
+        ['<=20', '21-40', '41-60', '61-80', '81-100'].indexOf(projectInfo.teamOverlap),
+        ['yes', 'no', 'unsure'].indexOf(projectInfo.hasITTeam),
+        ['<=20', '21-40', '41-60', '61-80', '81-100'].indexOf(projectInfo.devicesWithFirewall),
+        ['public', 'private', 'both'].indexOf(projectInfo.networkType),
+        ['<=20', '21-40', '41-60', '61-80', '81-100'].indexOf(projectInfo.phishingFailRate),
+        ['level1', 'level2', 'level3', 'level4', 'level5'].indexOf(projectInfo.governanceLevel),
+        ['yes', 'no'].indexOf(projectInfo.allowPasswordReuse),
+        ['yes', 'no'].indexOf(projectInfo.usesMFA)
+      ];
+
+      // Calculate risk reduction for each recommendation
+      const promises = recommendations.map(async (rec) => {
+        try {
+          // Skip if feature group is not in expected format
+          if (!rec.featureGroup || rec.featureGroup === '1.1') {
+            console.warn(`Skipping risk reduction calculation for ${rec.featureName} - invalid feature group: ${rec.featureGroup}`);
+            return;
+          }
+          
+          console.log(`Calculating risk reduction for ${rec.featureName}:`, {
+            featureGroup: rec.featureGroup,
+            currentOption: rec.currentOption,
+            recommendedOption: rec.recommendedOption
+          });
+          
+          const result = await riskMitigationService.calculateRecommendationRiskReduction({
+            user_data: modelInput,
+            featureGroup: rec.featureGroup,
+            featureName: rec.featureName,
+            currentOption: rec.currentOption,
+            recommendedOption: rec.recommendedOption,
+          });
+          
+          // Update the recommendation with calculated risk reduction
+          const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+          setEnhancedDescriptions(prev => {
+            const existing = prev.get(cacheKey) || rec;
+            return new Map(prev.set(cacheKey, {
+              ...existing,
+              calculatedRiskReduction: result.riskReductionPercentage
+            }));
+          });
+        } catch (error) {
+          console.error(`Error calculating risk reduction for ${rec.featureName}:`, error);
+          console.error('Recommendation details:', rec);
+        }
+      });
+
+      await Promise.all(promises);
+    } catch (error) {
+      console.error('Error calculating individual risk reductions:', error);
+    }
+  };
+
   // Initialize chatbot when component mounts or risk results change
   useEffect(() => {
     const initializeChat = async () => {
@@ -2297,27 +2518,87 @@ const RiskQuantification = () => {
         hasStrategy: !!riskMitigationStrategy
       });
 
+      const isFormCompleteNow = isFormComplete();
+      let service = chatbotService;
+
       if (!chatbotService) {
-        const service = new ChatbotService();
+        service = new ChatbotService();
         setChatbotService(service);
-        if (isFormComplete()) {
+      }
+
+      if (service) {
+        if (isFormCompleteNow) {
           console.log('🤖 Initializing chatbot with full data');
           const success = await service.initialize(projectInfo, riskResults, riskMitigationStrategy || undefined);
-        setIsChatInitialized(success);
+          setIsChatInitialized(success);
+          
+          // Update the default conversation with context-aware message
+          setConversations(prev => prev.map(conv => {
+            if (conv.id === 1) {
+              return {
+                ...conv,
+                messages: [{
+                  id: 1,
+                  text: "Hello! I'm **Dr. CyberBuild**, your expert construction cybersecurity consultant. I have **analyzed your project data** and I'm ready to provide specialized guidance. I can see your project details, risk assessments, and mitigation strategies. What specific cybersecurity aspects would you like to discuss?",
+                  sender: 'ai' as const,
+                  timestamp: new Date(),
+                }],
+                lastUpdated: new Date(),
+              };
+            }
+            return conv;
+          }));
         } else {
           console.log('🤖 Initializing chatbot without data');
           const success = await service.initialize();
           setIsChatInitialized(success);
+          
+          // Update with generic message
+          setConversations(prev => prev.map(conv => {
+            if (conv.id === 1) {
+              return {
+                ...conv,
+                messages: [{
+                  id: 1,
+                  text: "Hello! I'm **Dr. CyberBuild**, your expert construction cybersecurity consultant. I specialize in analyzing cyber risks for construction projects and providing actionable security strategies. Once you complete your risk assessment, I'll have comprehensive insights about your project to offer specialized guidance. How can I assist you today?",
+                  sender: 'ai' as const,
+                  timestamp: new Date(),
+                }],
+                lastUpdated: new Date(),
+              };
+            }
+            return conv;
+          }));
         }
-      } else if (isFormComplete() && !isChatInitialized) {
-        console.log('🤖 Re-initializing chatbot with full data');
-        const success = await chatbotService.initialize(projectInfo, riskResults, riskMitigationStrategy || undefined);
-        setIsChatInitialized(success);
       }
     };
 
     initializeChat();
   }, [riskResults, riskMitigationStrategy, isFormComplete()]);
+
+  // Generate new recommended questions based on conversation history
+  const updateRecommendedQuestions = async (conversationMessages: Message[]) => {
+    if (!chatbotService || conversationMessages.length < 2) return;
+
+    setIsLoadingQuestions(true);
+    try {
+      const conversationHistory = conversationMessages.map(msg => ({
+        sender: msg.sender,
+        text: msg.text
+      }));
+
+      const newQuestions = await chatbotService.generateFollowUpQuestions(conversationHistory);
+      
+      if (newQuestions.length > 0) {
+        // Animate the question updates
+        setRecommendedQuestions(newQuestions);
+      }
+    } catch (error) {
+      console.error('Error generating follow-up questions:', error);
+    } finally {
+      setIsLoadingQuestions(false);
+    }
+  };
 
   // Update handleChatSend to use the chatbot service
   const handleChatSend = async () => {
@@ -2331,11 +2612,12 @@ const RiskQuantification = () => {
     };
 
     // Update UI immediately with user message
+    const updatedMessages = [...currentConversation.messages, userMessage];
     setConversations(prev => prev.map(conv => {
       if (conv.id === currentConversationId) {
         return {
           ...conv,
-          messages: [...conv.messages, userMessage],
+          messages: updatedMessages,
           lastUpdated: new Date(),
         };
       }
@@ -2359,17 +2641,23 @@ const RiskQuantification = () => {
         timestamp: new Date(),
       };
 
+      const finalMessages = [...updatedMessages, aiMessage];
+
       // Update conversation with AI response
       setConversations(prev => prev.map(conv => {
         if (conv.id === currentConversationId) {
           return {
             ...conv,
-            messages: [...conv.messages, aiMessage],
+            messages: finalMessages,
             lastUpdated: new Date(),
           };
         }
         return conv;
       }));
+
+      // Generate new recommended questions after successful conversation
+      await updateRecommendedQuestions(finalMessages);
+
     } catch (error) {
       console.error('Error getting chatbot response:', error);
       
@@ -2385,7 +2673,7 @@ const RiskQuantification = () => {
         if (conv.id === currentConversationId) {
           return {
             ...conv,
-            messages: [...conv.messages, errorMessage],
+            messages: [...updatedMessages, errorMessage],
             lastUpdated: new Date(),
           };
         }
@@ -2416,10 +2704,13 @@ const RiskQuantification = () => {
         await chatbotService.initialize();
       }
 
-      // Add initial AI message
+      // Add initial AI message based on available data
+      const hasProjectData = isFormComplete();
       const initialMessage: Message = {
         id: 1,
-        text: "Hello! I'm Dr. CyberBuild, your expert construction cybersecurity consultant. I have analyzed your project data and I'm ready to provide specialized guidance on enhancing your cybersecurity posture. What would you like to discuss?",
+        text: hasProjectData 
+          ? "Hello! I'm **Dr. CyberBuild**, your expert construction cybersecurity consultant. I have **analyzed your complete project data** including risk assessments and mitigation strategies. I'm ready to provide specialized guidance tailored to your specific project. What cybersecurity aspects would you like to explore?"
+          : "Hello! I'm **Dr. CyberBuild**, your expert construction cybersecurity consultant. I specialize in analyzing cyber risks for construction projects. Complete your risk assessment first to get personalized insights, or ask me general cybersecurity questions. How can I help you today?",
         sender: 'ai',
         timestamp: new Date(),
       };
@@ -2550,6 +2841,9 @@ const RiskQuantification = () => {
       });
       
       setRiskMitigationStrategy(convertedStrategy);
+      
+      // Load ALL enhanced descriptions in one API call (but only if not already cached)
+      loadAllEnhancedDescriptions(convertedStrategy);
       
       // Update chatbot context with new strategy
       if (chatbotService && isChatInitialized) {
@@ -2683,6 +2977,9 @@ const RiskQuantification = () => {
 
       setRiskMitigationStrategy(convertedStrategy);
       
+      // Load ALL enhanced descriptions in one API call
+      loadAllEnhancedDescriptions(convertedStrategy);
+      
       // Reset applied recommendations when manually refreshing
       setAppliedRecommendations(new Set());
       
@@ -2696,154 +2993,393 @@ const RiskQuantification = () => {
     }
   };
 
+  // Toggle recommendation (apply or unapply)
+  const toggleRecommendation = async (recommendation: RiskMitigationRecommendation) => {
+    const recommendationId = `${recommendation.featureGroup}-${recommendation.recommendedOption}`;
+    const persistentId = `${recommendation.featureGroup}-${recommendation.currentOption}-to-${recommendation.recommendedOption}`;
+    
+    // Check if already applied
+    const isCurrentlyApplied = appliedRecommendations.has(recommendationId) || appliedRecommendations.has(persistentId);
+    
+    if (isCurrentlyApplied) {
+      // Unapply: revert to original current option
+      await unapplyRecommendation(recommendation);
+    } else {
+      // Apply: change to recommended option
+      await applyRecommendation(recommendation);
+    }
+  };
+
+  // Unapply recommendation (revert to original value)
+  const unapplyRecommendation = async (recommendation: RiskMitigationRecommendation) => {
+    const recommendationId = `${recommendation.featureGroup}-${recommendation.recommendedOption}`;
+    const persistentId = `${recommendation.featureGroup}-${recommendation.currentOption}-to-${recommendation.recommendedOption}`;
+    
+    setApplyingRecommendation(recommendationId);
+    
+    try {
+      // Map feature groups to form fields
+      const fieldMapping: { [key: string]: keyof ProjectInfo } = {
+        '1.1': 'projectDuration',
+        '1.2': 'projectType',
+        '1.3': 'hasCyberLegalTeam',
+        '1.4': 'companyScale',
+        '1.5': 'projectPhase',
+        '2.1.1': 'layer1Teams',
+        '2.1.2': 'layer2Teams', 
+        '2.1.3': 'layer3Teams',
+        '2.2': 'teamOverlap',
+        '3.1': 'hasITTeam',
+        '3.2': 'devicesWithFirewall',
+        '3.3': 'networkType',
+        '3.4': 'phishingFailRate',
+        '4.1': 'governanceLevel',
+        '4.2': 'allowPasswordReuse',
+        '4.3': 'usesMFA'
+      };
+
+      const fieldKey = fieldMapping[recommendation.featureGroup];
+      if (!fieldKey) {
+        console.warn(`No field mapping found for feature group: ${recommendation.featureGroup}`);
+        return;
+      }
+
+      // Get the original form value (from current option)
+      const getFormValue = (featureGroup: string, currentOption: string): string => {
+        switch (featureGroup) {
+          case '1.1': // Project Duration
+            if (currentOption === '≤3 months') return '<=3m';
+            if (currentOption === '3-6 months') return '3-6m';
+            if (currentOption === '6-12 months') return '6-12m';
+            if (currentOption === '12-24 months') return '12-24m';
+            if (currentOption === '>24 months') return '>24m';
+            return '';
+          case '1.2': // Project Type
+            if (currentOption === 'Transportation') return 'transportation';
+            if (currentOption === 'Government') return 'government';
+            if (currentOption === 'Healthcare') return 'healthcare';
+            if (currentOption === 'Commercial') return 'commercial';
+            if (currentOption === 'Residential') return 'residential';
+            if (currentOption === 'Other') return 'other';
+            return '';
+          case '1.3': // Cybersecurity Legal Team
+            return currentOption === 'Yes' ? 'yes' : currentOption === 'No' ? 'no' : 'unsure';
+          case '1.4': // Company Scale
+            if (currentOption === '≤30') return '<=30';
+            if (currentOption === '31-60') return '31-60';
+            if (currentOption === '61-100') return '61-100';
+            if (currentOption === '101-150') return '101-150';
+            if (currentOption === '>150') return '>150';
+            return '';
+          case '1.5': // Project Phase
+            if (currentOption === 'Planning') return 'planning';
+            if (currentOption === 'Design') return 'design';
+            if (currentOption === 'Construction') return 'construction';
+            if (currentOption === 'Maintenance') return 'maintenance';
+            if (currentOption === 'Demolition') return 'demolition';
+            return '';
+          case '2.1.1': // Layer 1 Teams
+          case '2.1.2': // Layer 2 Teams  
+          case '2.1.3': // Layer 3 Teams
+            if (currentOption === '>40') return '>40';
+            if (currentOption === '31-40') return '31-40';
+            if (currentOption === '21-30') return '21-30';
+            if (currentOption === '11-20') return '11-20';
+            if (currentOption === '≤10') return '<=10';
+            if (currentOption === 'N/A') return 'na';
+            return 'na';
+          case '2.2': // Team Overlap
+            if (currentOption === '≤20%') return '<=20';
+            if (currentOption === '21-40%') return '21-40';
+            if (currentOption === '41-60%') return '41-60';
+            if (currentOption === '61-80%') return '61-80';
+            if (currentOption === '81-100%') return '81-100';
+            return '';
+          case '3.1': // IT Team
+            return currentOption === 'Yes' ? 'yes' : currentOption === 'No' ? 'no' : 'unsure';
+          case '3.2': // Firewall Coverage
+          case '3.4': // Phishing Failure Rate
+            if (currentOption === '≤20%') return '<=20';
+            if (currentOption === '21-40%') return '21-40';
+            if (currentOption === '41-60%') return '41-60';
+            if (currentOption === '61-80%') return '61-80';
+            if (currentOption === '81-100%') return '81-100';
+            return '';
+          case '3.3': // Network Type
+            if (currentOption === 'Private') return 'private';
+            if (currentOption === 'Public') return 'public';
+            if (currentOption === 'Both') return 'both';
+            return '';
+          case '4.1': // Governance Level
+            if (currentOption === 'Level 5') return 'level5';
+            if (currentOption === 'Level 4') return 'level4';
+            if (currentOption === 'Level 3') return 'level3';
+            if (currentOption === 'Level 2') return 'level2';
+            if (currentOption === 'Level 1') return 'level1';
+            return '';
+          case '4.2': // Password Reuse
+            return currentOption === 'Not Allowed' ? 'no' : 'yes';
+          case '4.3': // MFA
+            return currentOption === 'Yes' ? 'yes' : 'no';
+          default:
+            return '';
+        }
+      };
+
+      const originalValue = getFormValue(recommendation.featureGroup, recommendation.currentOption);
+      
+      // Update the form back to original value
+      const updatedProjectInfo = {
+        ...projectInfo,
+        [fieldKey]: originalValue
+      };
+      
+      setProjectInfo(updatedProjectInfo);
+
+      // Update risk scores only (not the full mitigation strategy)
+      setIsLoading(true);
+      setApiError(null);
+      
+      try {
+        if (useRandomResults) {
+          const results = generateRandomResults();
+          setRiskResults(results);
+        } else {
+          const results = await riskApiService.calculateRisk(updatedProjectInfo);
+          setRiskResults(results);
+        }
+        
+        // Remove recommendation from applied set
+        setAppliedRecommendations(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(recommendationId);
+          newSet.delete(persistentId);
+          return newSet;
+        });
+        
+        // Update the recommendation in the strategy to reflect it's reverted
+        if (riskMitigationStrategy) {
+          const updatedStrategy = {
+            ...riskMitigationStrategy,
+            rounds: riskMitigationStrategy.rounds.map(round => ({
+              ...round,
+              recommendations: round.recommendations.map(rec => {
+                if (rec.featureGroup === recommendation.featureGroup) {
+                  return {
+                    ...rec,
+                    currentOption: recommendation.currentOption // Revert to original
+                  };
+                }
+                return rec;
+              })
+            }))
+          };
+          setRiskMitigationStrategy(updatedStrategy);
+          
+          // Recalculate risk reductions for all recommendations with the reverted project state
+          console.log('🔄 Recalculating risk reductions after reverting recommendation...');
+          const allRecommendations = updatedStrategy.rounds.flatMap(round => round.recommendations);
+          await calculateIndividualRiskReductions(allRecommendations);
+        }
+        
+        console.log(`Unapplied recommendation: ${recommendation.featureName} → reverted to ${recommendation.currentOption}`);
+      } catch (error) {
+        console.error('Risk recalculation failed:', error);
+        setApiError((error as Error).message || 'Failed to recalculate risk scores');
+      } finally {
+        setIsLoading(false);
+        setApplyingRecommendation(null);
+      }
+    } catch (error) {
+      console.error('Error unapplying recommendation:', error);
+      setApplyingRecommendation(null);
+    }
+  };
+
   // Apply recommendation to form
   const applyRecommendation = async (recommendation: RiskMitigationRecommendation) => {
     const recommendationId = `${recommendation.featureGroup}-${recommendation.recommendedOption}`;
     setApplyingRecommendation(recommendationId);
     
     try {
+      // Show immediate feedback
+      const riskReduction = recommendation.riskReductionPercentage || recommendation.calculatedRiskReduction || 0;
+      if (riskReduction > 0) {
+        console.log(`Applying change: ${recommendation.featureName} - Expected risk reduction: ${riskReduction.toFixed(1)}%`);
+      }
+      
       // Map feature groups to form fields
       const fieldMapping: { [key: string]: keyof ProjectInfo } = {
-      '1.3': 'hasCyberLegalTeam',
-      '2.1.1': 'layer1Teams',
-      '2.1.2': 'layer2Teams', 
-      '2.1.3': 'layer3Teams',
-      '2.2': 'teamOverlap',
-      '3.1': 'hasITTeam',
-      '3.2': 'devicesWithFirewall',
-      '3.3': 'networkType',
-      '3.4': 'phishingFailRate',
-      '4.1': 'governanceLevel',
-      '4.2': 'allowPasswordReuse',
-      '4.3': 'usesMFA'
-    };
+        '1.1': 'projectDuration',
+        '1.2': 'projectType',
+        '1.3': 'hasCyberLegalTeam',
+        '1.4': 'companyScale',
+        '1.5': 'projectPhase',
+        '2.1.1': 'layer1Teams',
+        '2.1.2': 'layer2Teams', 
+        '2.1.3': 'layer3Teams',
+        '2.2': 'teamOverlap',
+        '3.1': 'hasITTeam',
+        '3.2': 'devicesWithFirewall',
+        '3.3': 'networkType',
+        '3.4': 'phishingFailRate',
+        '4.1': 'governanceLevel',
+        '4.2': 'allowPasswordReuse',
+        '4.3': 'usesMFA'
+      };
 
-    const fieldKey = fieldMapping[recommendation.featureGroup];
-    if (!fieldKey) {
-      console.warn(`No field mapping found for feature group: ${recommendation.featureGroup}`);
-      return;
-    }
-
-    // Map recommended options to form values
-    const getFormValue = (featureGroup: string, recommendedOption: string): string => {
-      switch (featureGroup) {
-        case '1.3': // Cybersecurity Legal Team
-          return recommendedOption === 'Yes' ? 'yes' : 'no';
-        case '2.1.1': // Layer 1 Teams
-        case '2.1.2': // Layer 2 Teams  
-        case '2.1.3': // Layer 3 Teams
-          if (recommendedOption === '>40') return '>40';
-          if (recommendedOption === '31-40') return '31-40';
-          if (recommendedOption === '21-30') return '21-30';
-          if (recommendedOption === '11-20') return '11-20';
-          if (recommendedOption === '≤10') return '<=10';
-          return 'na';
-        case '2.2': // Team Overlap
-          if (recommendedOption === '≤20%') return '<=20';
-          if (recommendedOption === '21-40%') return '21-40';
-          if (recommendedOption === '41-60%') return '41-60';
-          if (recommendedOption === '61-80%') return '61-80';
-          return '81-100';
-        case '3.1': // IT Team
-          return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
-        case '3.2': // Firewall Coverage
-          if (recommendedOption === '81-100%') return '81-100';
-          if (recommendedOption === '61-80%') return '61-80';
-          if (recommendedOption === '41-60%') return '41-60';
-          if (recommendedOption === '21-40%') return '21-40';
-          return '<=20';
-        case '3.3': // Network Type
-          if (recommendedOption === 'Private network') return 'private';
-          if (recommendedOption === 'Public network') return 'public';
-          return 'both';
-        case '3.4': // Phishing Failure Rate
-          if (recommendedOption === '≤20%') return '<=20';
-          if (recommendedOption === '21-40%') return '21-40';
-          if (recommendedOption === '41-60%') return '41-60';
-          if (recommendedOption === '61-80%') return '61-80';
-          return '81-100';
-        case '4.1': // Governance Level
-          if (recommendedOption === 'Level 5') return 'level5';
-          if (recommendedOption === 'Level 4') return 'level4';
-          if (recommendedOption === 'Level 3') return 'level3';
-          if (recommendedOption === 'Level 2') return 'level2';
-          return 'level1';
-        case '4.2': // Password Reuse
-          return recommendedOption === 'Not Allowed' ? 'no' : 'yes';
-        case '4.3': // MFA
-          return recommendedOption === 'Yes' ? 'yes' : 'no';
-        default:
-          return '';
+      const fieldKey = fieldMapping[recommendation.featureGroup];
+      if (!fieldKey) {
+        console.warn(`No field mapping found for feature group: ${recommendation.featureGroup}`);
+        return;
       }
-    };
 
-    const newValue = getFormValue(recommendation.featureGroup, recommendation.recommendedOption);
-    
-        // Update the form
-    const updatedProjectInfo = {
-      ...projectInfo,
-      [fieldKey]: newValue
-    };
-    
-    setProjectInfo(updatedProjectInfo);
-
-    // Recalculate risk analysis with updated data
-    setIsLoading(true);
-    setApiError(null);
-    
-    try {
-      if (useRandomResults) {
-        const results = generateRandomResults();
-        setRiskResults(results);
-      } else {
-        const results = await riskApiService.calculateRisk(updatedProjectInfo);
-        setRiskResults(results);
-      }
-      
-      // Delay the strategy refresh to allow for smooth UI transitions
-      setTimeout(async () => {
-        const currentRound = selectedRound; // Capture current round before update
-        setPreservedRound(currentRound); // Store it separately
-        setIsUpdatingStrategy(true);
-        
-        try {
-          console.log('🔧 Refreshing strategy with updated data...', updatedProjectInfo);
-          
-          // Also recalculate the base risk results to ensure everything is in sync
-          if (!useRandomResults) {
-            const freshRiskResults = await riskApiService.calculateRisk(updatedProjectInfo);
-            setRiskResults(freshRiskResults);
-            console.log('🔧 Updated risk results:', freshRiskResults);
-          }
-          
-          // Generate new strategy with the updated form data
-          await generateMitigationWithUpdatedData(updatedProjectInfo);
-          // Restore the round immediately and consistently
-          setSelectedRound(currentRound);
-          setIsUpdatingStrategy(false);
-        } catch (error) {
-          console.error('Strategy update failed:', error);
-          setSelectedRound(currentRound); // Restore even on error
-          setIsUpdatingStrategy(false);
+      // Map recommended options to form values
+      const getFormValue = (featureGroup: string, recommendedOption: string): string => {
+        switch (featureGroup) {
+          case '1.1': // Project Duration
+            if (recommendedOption === '≤3 months') return '<=3m';
+            if (recommendedOption === '3-6 months') return '3-6m';
+            if (recommendedOption === '6-12 months') return '6-12m';
+            if (recommendedOption === '12-24 months') return '12-24m';
+            if (recommendedOption === '>24 months') return '>24m';
+            return '';
+          case '1.2': // Project Type
+            if (recommendedOption === 'Transportation') return 'transportation';
+            if (recommendedOption === 'Government') return 'government';
+            if (recommendedOption === 'Healthcare') return 'healthcare';
+            if (recommendedOption === 'Commercial') return 'commercial';
+            if (recommendedOption === 'Residential') return 'residential';
+            if (recommendedOption === 'Other') return 'other';
+            return '';
+          case '1.3': // Cybersecurity Legal Team
+            return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
+          case '1.4': // Company Scale
+            if (recommendedOption === '≤30') return '<=30';
+            if (recommendedOption === '31-60') return '31-60';
+            if (recommendedOption === '61-100') return '61-100';
+            if (recommendedOption === '101-150') return '101-150';
+            if (recommendedOption === '>150') return '>150';
+            return '';
+          case '1.5': // Project Phase
+            if (recommendedOption === 'Planning') return 'planning';
+            if (recommendedOption === 'Design') return 'design';
+            if (recommendedOption === 'Construction') return 'construction';
+            if (recommendedOption === 'Maintenance') return 'maintenance';
+            if (recommendedOption === 'Demolition') return 'demolition';
+            return '';
+          case '2.1.1': // Layer 1 Teams
+          case '2.1.2': // Layer 2 Teams  
+          case '2.1.3': // Layer 3 Teams
+            if (recommendedOption === '>40') return '>40';
+            if (recommendedOption === '31-40') return '31-40';
+            if (recommendedOption === '21-30') return '21-30';
+            if (recommendedOption === '11-20') return '11-20';
+            if (recommendedOption === '≤10') return '<=10';
+            if (recommendedOption === 'N/A') return 'na';
+            return 'na';
+          case '2.2': // Team Overlap
+            if (recommendedOption === '≤20%') return '<=20';
+            if (recommendedOption === '21-40%') return '21-40';
+            if (recommendedOption === '41-60%') return '41-60';
+            if (recommendedOption === '61-80%') return '61-80';
+            if (recommendedOption === '81-100%') return '81-100';
+            return '';
+          case '3.1': // IT Team
+            return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
+          case '3.2': // Firewall Coverage
+          case '3.4': // Phishing Failure Rate
+            if (recommendedOption === '≤20%') return '<=20';
+            if (recommendedOption === '21-40%') return '21-40';
+            if (recommendedOption === '41-60%') return '41-60';
+            if (recommendedOption === '61-80%') return '61-80';
+            if (recommendedOption === '81-100%') return '81-100';
+            return '';
+          case '3.3': // Network Type
+            if (recommendedOption === 'Private') return 'private';
+            if (recommendedOption === 'Public') return 'public';
+            if (recommendedOption === 'Both') return 'both';
+            return '';
+          case '4.1': // Governance Level
+            if (recommendedOption === 'Level 5') return 'level5';
+            if (recommendedOption === 'Level 4') return 'level4';
+            if (recommendedOption === 'Level 3') return 'level3';
+            if (recommendedOption === 'Level 2') return 'level2';
+            if (recommendedOption === 'Level 1') return 'level1';
+            return '';
+          case '4.2': // Password Reuse
+            return recommendedOption === 'Not Allowed' ? 'no' : 'yes';
+          case '4.3': // MFA
+            return recommendedOption === 'Yes' ? 'yes' : 'no';
+          default:
+            return '';
         }
-      }, 1500); // Longer delay to let the user see the "Applied" state
+      };
+
+      const newValue = getFormValue(recommendation.featureGroup, recommendation.recommendedOption);
       
-      // Mark recommendation as applied with more specific tracking
-      const persistentId = `${recommendation.featureGroup}-${recommendation.currentOption}-to-${recommendation.recommendedOption}`;
-      setAppliedRecommendations(prev => new Set([...prev, recommendationId, persistentId]));
+      // Update the form
+      const updatedProjectInfo = {
+        ...projectInfo,
+        [fieldKey]: newValue
+      };
       
-      console.log(`Applied recommendation: ${recommendation.featureName} → ${recommendation.recommendedOption}`);
+      setProjectInfo(updatedProjectInfo);
+
+      // Update risk scores only (not the full mitigation strategy)
+      setIsLoading(true);
+      setApiError(null);
+      
+      try {
+        if (useRandomResults) {
+          const results = generateRandomResults();
+          setRiskResults(results);
+        } else {
+          const results = await riskApiService.calculateRisk(updatedProjectInfo);
+          setRiskResults(results);
+        }
+        
+        // Mark recommendation as applied without regenerating strategy
+        const persistentId = `${recommendation.featureGroup}-${recommendation.currentOption}-to-${recommendation.recommendedOption}`;
+        setAppliedRecommendations(prev => new Set([...prev, recommendationId, persistentId]));
+        
+        console.log(`Applied recommendation: ${recommendation.featureName} → ${recommendation.recommendedOption}`);
+        
+        // Update the recommendation in the strategy to reflect it's applied
+        if (riskMitigationStrategy) {
+          const updatedStrategy = {
+            ...riskMitigationStrategy,
+            rounds: riskMitigationStrategy.rounds.map(round => ({
+              ...round,
+              recommendations: round.recommendations.map(rec => {
+                if (rec.featureGroup === recommendation.featureGroup) {
+                  return {
+                    ...rec,
+                    currentOption: recommendation.recommendedOption
+                  };
+                }
+                return rec;
+              })
+            }))
+          };
+          setRiskMitigationStrategy(updatedStrategy);
+          
+          // Recalculate risk reductions for all recommendations with the new project state
+          console.log('🔄 Recalculating risk reductions after applying recommendation...');
+          const allRecommendations = updatedStrategy.rounds.flatMap(round => round.recommendations);
+          await calculateIndividualRiskReductions(allRecommendations);
+        }
+      } catch (error) {
+        console.error('Risk recalculation failed:', error);
+        setApiError((error as Error).message || 'Failed to recalculate risk scores');
+      } finally {
+        setIsLoading(false);
+        setApplyingRecommendation(null);
+      }
     } catch (error) {
-      console.error('Risk recalculation failed:', error);
-      setApiError((error as Error).message || 'Failed to recalculate risk scores');
-    } finally {
-      setIsLoading(false);
+      console.error('Error applying recommendation:', error);
       setApplyingRecommendation(null);
     }
-  } catch (error) {
-    console.error('Error applying recommendation:', error);
-    setApplyingRecommendation(null);
-  }
   };
 
   // Handle changeable property toggle
@@ -2859,6 +3395,1075 @@ const RiskQuantification = () => {
     }
   };
 
+  // Toggle recommendation lock
+  const toggleRecommendationLock = (recommendationId: string) => {
+    setLockedRecommendations(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(recommendationId)) {
+        newSet.delete(recommendationId);
+      } else {
+        newSet.add(recommendationId);
+      }
+      return newSet;
+    });
+  };
+
+  // Fetch enhanced descriptions for ALL recommendations in the entire strategy (one-time call)
+  const fetchAllEnhancedDescriptions = async (allRecommendations: RiskMitigationRecommendation[]): Promise<RiskMitigationRecommendation[]> => {
+    try {
+      // Create a batch prompt for all recommendations
+      const batchPrompt = `Analyze these cybersecurity recommendations for a construction project. For each recommendation, provide a brief analysis including cost and importance.
+
+${allRecommendations.map((rec, index) => `
+**Recommendation ${index + 1}:**
+Feature: ${rec.featureName}
+Current: ${rec.currentOption}
+Recommended: ${rec.recommendedOption}
+Description: ${rec.description}
+`).join('')}
+
+For each recommendation, provide analysis in this exact format:
+Recommendation [number]: Cost: [$ signs]. Importance: [level]. [Brief explanation]
+
+Use:
+- Cost: $ (low), $$ (moderate), $$$ (high), $$$$ (very high)
+- Importance: Critical/High/Medium/Low
+- Keep explanations to 1-2 sentences maximum
+
+Provide all ${allRecommendations.length} analyses:`;
+
+      const response = await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + import.meta.env.VITE_GEMINI_API_KEY, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: batchPrompt
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch from Gemini API');
+      }
+
+      const data = await response.json();
+      const batchResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      
+      // Parse the batch response to extract individual recommendations
+      const enhancedRecommendations = allRecommendations.map((rec, index) => {
+        try {
+          // Look for the specific recommendation number
+          const recommendationPattern = new RegExp(`Recommendation ${index + 1}:\\s*Cost:\\s*(\\$+)\\.\\s*Importance:\\s*(\\w+)\\.\\s*([^\\n]*(?:\\n[^R]*?)*)`, 'i');
+          const match = batchResponse.match(recommendationPattern);
+          
+          if (match) {
+            const [, costSignsMatch, importance, description] = match;
+            const costLevel = costSignsMatch ? costSignsMatch.length : 2;
+            const cleanDescription = description.trim().replace(/Recommendation \d+:/gi, '').trim();
+            
+            return {
+              ...rec,
+              enhancedDescription: cleanDescription.length > 10 ? cleanDescription : rec.description,
+              costLevel: Math.min(Math.max(costLevel, 1), 4),
+              importance: importance || 'Medium'
+            };
+          } else {
+            // Fallback parsing if numbered format fails
+            const lines = batchResponse.split('\n').filter((line: string) => line.trim());
+            const relevantLine = lines[index] || '';
+            
+            const costMatch = relevantLine.match(/Cost:\s*(\$+)/);
+            const importanceMatch = relevantLine.match(/Importance:\s*(\w+)/);
+            const costLevel = costMatch ? costMatch[1].length : 2;
+            const importance = importanceMatch ? importanceMatch[1] : 'Medium';
+            
+            // Extract description by removing the structured part
+            let cleanDescription = relevantLine.replace(/^.*?Cost:\s*\$+\.\s*Importance:\s*\w+\.\s*/, '').trim();
+            if (cleanDescription.length < 10) {
+              cleanDescription = rec.description;
+            }
+            
+            return {
+              ...rec,
+              enhancedDescription: cleanDescription,
+              costLevel: Math.min(Math.max(costLevel, 1), 4),
+              importance
+            };
+          }
+        } catch (parseError) {
+          console.error(`Error parsing recommendation ${index + 1}:`, parseError);
+          return {
+            ...rec,
+            enhancedDescription: rec.description,
+            costLevel: 2,
+            importance: 'Medium'
+          };
+        }
+      });
+
+      return enhancedRecommendations;
+    } catch (error) {
+      console.error('Error fetching all enhanced descriptions:', error);
+      // Return original recommendations with defaults
+      return allRecommendations.map(rec => ({
+        ...rec,
+        enhancedDescription: rec.description,
+        costLevel: 2,
+        importance: 'Medium'
+      }));
+    }
+  };
+
+  // Load ALL enhanced descriptions once for the entire strategy
+  const loadAllEnhancedDescriptions = async (strategy: RiskMitigationStrategy): Promise<void> => {
+    // Collect all recommendations from all rounds
+    const allRecommendations = strategy.rounds.flatMap(round => round.recommendations);
+    
+    // Check if any are missing from cache
+    const uncachedRecommendations = allRecommendations.filter(rec => {
+      const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+      return !enhancedDescriptions.has(cacheKey);
+    });
+    
+    // If all are cached, no need to make API call
+    if (uncachedRecommendations.length === 0) {
+      return;
+    }
+    
+    try {
+      // Make ONE API call for all recommendations
+      const enhanced = await fetchAllEnhancedDescriptions(allRecommendations);
+      
+      // Cache all enhanced recommendations
+      enhanced.forEach(enhancedRec => {
+        const cacheKey = `${enhancedRec.featureGroup}-${enhancedRec.featureName}-${enhancedRec.description}`;
+        setEnhancedDescriptions(prev => new Map(prev.set(cacheKey, enhancedRec)));
+      });
+      
+      // Calculate individual risk reductions for each recommendation
+      if (riskMitigationService) {
+        await calculateIndividualRiskReductions(allRecommendations);
+      }
+    } catch (error) {
+      console.error('Error loading all enhanced descriptions:', error);
+      // Cache original recommendations as fallback
+      allRecommendations.forEach(rec => {
+        const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+        setEnhancedDescriptions(prev => new Map(prev.set(cacheKey, {
+          ...rec,
+          enhancedDescription: rec.description,
+          costLevel: 2,
+          importance: 'Medium'
+        })));
+      });
+    }
+  };
+
+  // Get enhanced recommendations from cache (no API calls)
+  const getEnhancedRecommendations = (recommendations: RiskMitigationRecommendation[]): RiskMitigationRecommendation[] => {
+    return recommendations.map(rec => {
+      const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+      return enhancedDescriptions.get(cacheKey) || rec;
+    });
+  };
+
+  // Single recommendation wrapper for backward compatibility
+  const getEnhancedRecommendation = async (recommendation: RiskMitigationRecommendation): Promise<RiskMitigationRecommendation> => {
+    const results = await getEnhancedRecommendations([recommendation]);
+    return results[0];
+  };
+
+  // Batch Recommendations Loader Component
+  const BatchRecommendationsLoader = ({ 
+    round 
+  }: { 
+    round: RiskMitigationRound;
+  }) => {
+    const [enhancedRecommendations, setEnhancedRecommendations] = useState<RiskMitigationRecommendation[]>([]);
+    const [isLoadingBatch, setIsLoadingBatch] = useState(true);
+
+    useEffect(() => {
+      // Check if recommendations are already in cache
+      const allCached = round.recommendations.every(rec => {
+        const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+        return enhancedDescriptions.has(cacheKey);
+      });
+      
+      if (allCached) {
+        // Get from cache immediately - no loading needed
+        const cached = getEnhancedRecommendations(round.recommendations);
+        setEnhancedRecommendations(cached);
+        setIsLoadingBatch(false);
+      } else {
+        // Only set loading to true if we don't have any recommendations yet
+        // This prevents infinite loading when cache is being populated
+        if (enhancedRecommendations.length === 0) {
+          setIsLoadingBatch(true);
+          setEnhancedRecommendations([]);
+        }
+      }
+    }, [round.roundNumber, round.recommendations.length, enhancedDescriptions.size]);
+
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {isLoadingBatch && enhancedRecommendations.length === 0 ? (
+          // Show loading skeletons while first batch is loading
+          <>
+            {round.recommendations.map((_, index) => (
+              <Card 
+                key={`skeleton-${index}`}
+                variant="outlined" 
+                sx={{ 
+                  height: 200,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}
+              >
+                <CardContent>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <Skeleton variant="text" width="60%" height={28} />
+                    <Skeleton variant="circular" width={24} height={24} />
+                  </Box>
+                  
+                  <Skeleton variant="text" width="100%" height={20} sx={{ mb: 1 }} />
+                  <Skeleton variant="text" width="80%" height={20} sx={{ mb: 2 }} />
+                  
+                  <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                    <Skeleton variant="rounded" width={40} height={24} />
+                    <Skeleton variant="rounded" width={60} height={24} />
+                  </Box>
+                  
+                  <Skeleton variant="text" width="90%" height={16} sx={{ mb: 1 }} />
+                  <Skeleton variant="text" width="70%" height={16} sx={{ mb: 2 }} />
+                  
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Skeleton variant="rounded" width={120} height={32} />
+                    <Skeleton variant="rounded" width={140} height={32} />
+                  </Box>
+                </CardContent>
+                
+                {/* Subtle shimmer effect */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent)',
+                    transform: 'translateX(-100%)',
+                    animation: 'shimmer 1.5s infinite',
+                    '@keyframes shimmer': {
+                      '0%': { transform: 'translateX(-100%)' },
+                      '100%': { transform: 'translateX(100%)' }
+                    }
+                  }}
+                />
+              </Card>
+            ))}
+          </>
+        ) : (
+          // Show actual recommendations
+          enhancedRecommendations.map((rec, index) => (
+            <motion.div
+              key={`${rec.featureGroup}-${rec.featureName}-${index}`}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ 
+                duration: 0.3,
+                delay: index * 0.1
+              }}
+            >
+              <SimpleRecommendationCard 
+                rec={rec} 
+                index={index} 
+              />
+            </motion.div>
+          ))
+        )}
+      </Box>
+    );
+  };
+
+  // Simple Recommendation Card Component (for batch loading)
+  const SimpleRecommendationCard = ({ 
+    rec, 
+    index 
+  }: { 
+    rec: RiskMitigationRecommendation; 
+    index: number; 
+  }) => {
+    const recommendationId = `${rec.featureGroup}-${rec.recommendedOption}`;
+    const persistentId = `${rec.featureGroup}-${rec.currentOption}-to-${rec.recommendedOption}`;
+    const lockId = `${rec.featureGroup}-${rec.featureName}`;
+    const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+    
+    const isApplied = appliedRecommendations.has(recommendationId) || appliedRecommendations.has(persistentId);
+    const isLocked = lockedRecommendations.has(lockId);
+    const isAlreadySet = rec.currentOption === rec.recommendedOption;
+    const isApplying = applyingRecommendation === recommendationId;
+    const enhancedRecommendation = enhancedDescriptions.get(cacheKey);
+
+    const getCostDisplay = (costLevel?: number) => {
+      if (!costLevel) return '$$';
+      return '$'.repeat(Math.min(Math.max(costLevel, 1), 4));
+    };
+
+    const getCostColor = (costLevel?: number) => {
+      if (!costLevel) return '#ff9800';
+      switch (costLevel) {
+        case 1: return '#4caf50';
+        case 2: return '#ff9800';
+        case 3: return '#f44336';
+        case 4: return '#d32f2f';
+        default: return '#ff9800';
+      }
+    };
+
+    const getCostLabel = (costLevel?: number) => {
+      if (!costLevel) return 'Medium Cost';
+      switch (costLevel) {
+        case 1: return 'Low Cost';
+        case 2: return 'Medium Cost';
+        case 3: return 'High Cost';
+        case 4: return 'Very High Cost';
+        default: return 'Medium Cost';
+      }
+    };
+
+    const getCostDescription = (costLevel?: number) => {
+      if (!costLevel) return 'Moderate investment required for implementation';
+      switch (costLevel) {
+        case 1: return 'Minimal investment required - quick and easy to implement';
+        case 2: return 'Moderate investment required - reasonable cost with good ROI';
+        case 3: return 'Significant investment required - higher cost but important for security';
+        case 4: return 'Major investment required - substantial cost but critical for comprehensive security';
+        default: return 'Moderate investment required for implementation';
+      }
+    };
+
+    const getImportanceColor = (importance?: string) => {
+      switch (importance?.toLowerCase()) {
+        case 'critical': return '#d32f2f';
+        case 'high': return '#f44336';
+        case 'medium': return '#ff9800';
+        case 'low': return '#4caf50';
+        default: return '#ff9800';
+      }
+    };
+
+    // Helper function to get risk reduction color based on percentage
+    const getRiskReductionColor = (percentage: number) => {
+      if (percentage >= 15) return '#2e7d32'; // Dark green for high reduction
+      if (percentage >= 10) return '#4caf50'; // Green for good reduction
+      if (percentage >= 5) return '#ff9800'; // Orange for moderate reduction
+      return '#f44336'; // Red for low reduction
+    };
+
+    return (
+      <motion.div
+        key={index}
+        layout
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ 
+          opacity: 1, 
+          y: 0,
+          scale: isApplied ? [1, 1.02, 1] : 1,
+        }}
+        transition={{ 
+          duration: 0.3,
+          delay: index * 0.1,
+          scale: { duration: 0.5, times: [0, 0.5, 1] }
+        }}
+      >
+        <Card 
+          variant="outlined" 
+          sx={{
+            position: 'relative',
+            overflow: 'hidden',
+            opacity: isLocked ? 0.7 : 1,
+            ...(isApplied && {
+              bgcolor: (theme) => theme.palette.mode === 'dark' 
+                        ? 'rgba(76, 175, 80, 0.15)' 
+                        : 'success.light',
+              borderColor: 'success.main',
+              boxShadow: (theme) => theme.palette.mode === 'dark'
+                ? '0 0 20px rgba(76, 175, 80, 0.4)'
+                : '0 0 20px rgba(76, 175, 80, 0.3)',
+              color: (theme) => theme.palette.mode === 'dark' 
+                ? 'success.light' 
+                : 'inherit',
+            }),
+            ...(isLocked && {
+              borderColor: 'grey.400',
+              bgcolor: 'grey.50',
+            })
+          }}
+        >
+          {isApplied && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 4,
+                bgcolor: 'success.main',
+                background: (theme) => theme.palette.mode === 'dark'
+                  ? 'linear-gradient(90deg, #66bb6a, #a5d6a7, #66bb6a)'
+                  : 'linear-gradient(90deg, #4caf50, #81c784, #4caf50)',
+                backgroundSize: '200% 100%',
+                animation: 'shimmer 2s infinite',
+                '@keyframes shimmer': {
+                  '0%': { backgroundPosition: '-200% 0' },
+                  '100%': { backgroundPosition: '200% 0' }
+                }
+              }}
+            />
+          )}
+          
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 3 }}>
+              {/* Main Content */}
+              <Box sx={{ flex: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    {rec.featureName}
+                  </Typography>
+                  
+                  <Tooltip title={isLocked ? "Unlock recommendation" : "Lock recommendation to prevent changes"} arrow>
+                    <IconButton
+                      size="small"
+                      onClick={() => toggleRecommendationLock(lockId)}
+                      sx={{ 
+                        color: isLocked ? 'warning.main' : 'text.secondary',
+                        '&:hover': {
+                          bgcolor: isLocked ? 'warning.light' : 'action.hover'
+                        }
+                      }}
+                    >
+                      {isLocked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+
+                <Box sx={{ mb: 2 }}>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    {rec.enhancedDescription || rec.description}
+                  </Typography>
+                  
+                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                    <Tooltip 
+                      title={
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                            {getCostLabel(rec.costLevel)}
+                          </Typography>
+                          <Typography variant="body2">
+                            {getCostDescription(rec.costLevel)}
+                          </Typography>
+                        </Box>
+                      }
+                      arrow
+                    >
+                      <Chip
+                        label={getCostDisplay(rec.costLevel)}
+                        size="small"
+                        sx={{
+                          bgcolor: getCostColor(rec.costLevel),
+                          color: 'white',
+                          fontWeight: 'bold',
+                          cursor: 'help',
+                          '& .MuiChip-label': {
+                            px: 1
+                          }
+                        }}
+                      />
+                    </Tooltip>
+                    
+                    <Chip
+                      label={`Priority: ${rec.importance || 'Medium'}`}
+                      size="small"
+                      sx={{
+                        bgcolor: getImportanceColor(rec.importance),
+                        color: 'white',
+                        fontWeight: 'bold'
+                      }}
+                    />
+                  </Box>
+                </Box>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip label="Current" size="small" variant="outlined" />
+                    <Typography variant="body2">{rec.currentOption}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip label="Recommended" size="small" color="primary" />
+                    <Typography variant="body2" fontWeight="medium">{rec.recommendedOption}</Typography>
+                  </Box>
+                </Box>
+
+                <Typography variant="body2" color="text.secondary">
+                  {rec.description}
+                </Typography>
+
+                {/* Risk Reduction Display */}
+                {(rec.riskReductionPercentage || rec.calculatedRiskReduction || enhancedRecommendation?.calculatedRiskReduction) ? (
+                  <Box sx={{ mt: 2 }}>
+                    <Tooltip 
+                      title={
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                            Risk Reduction Impact
+                          </Typography>
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            This shows the absolute percentage point reduction in risk.
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                            For example: If your risk goes from 60% to 30%, that's a reduction of 30 percentage points (not 50%).
+                          </Typography>
+                        </Box>
+                      }
+                      arrow
+                    >
+                      <Chip
+                        icon={<TrendingDownIcon />}
+                        label={`-${(rec.calculatedRiskReduction || rec.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction || 0).toFixed(1)} pts`}
+                        size="small"
+                        sx={{
+                          bgcolor: (() => {
+                            const reduction = rec.calculatedRiskReduction || rec.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction || 0;
+                            if (reduction >= 15) return 'rgba(46, 125, 50, 0.1)'; // Dark green bg
+                            if (reduction >= 10) return 'rgba(76, 175, 80, 0.1)'; // Green bg
+                            if (reduction >= 5) return 'rgba(255, 152, 0, 0.1)'; // Orange bg
+                            return 'rgba(244, 67, 54, 0.1)'; // Red bg
+                          })(),
+                          color: (() => {
+                            const reduction = rec.calculatedRiskReduction || rec.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction || 0;
+                            if (reduction >= 15) return '#2e7d32'; // Dark green
+                            if (reduction >= 10) return '#4caf50'; // Green
+                            if (reduction >= 5) return '#ff9800'; // Orange
+                            return '#f44336'; // Red
+                          })(),
+                          borderColor: (() => {
+                            const reduction = rec.calculatedRiskReduction || rec.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction || 0;
+                            if (reduction >= 15) return '#2e7d32';
+                            if (reduction >= 10) return '#4caf50';
+                            if (reduction >= 5) return '#ff9800';
+                            return '#f44336';
+                          })(),
+                          borderWidth: 1,
+                          borderStyle: 'solid',
+                          fontWeight: 'bold',
+                          cursor: 'help',
+                          '& .MuiChip-icon': {
+                            color: (() => {
+                              const reduction = rec.calculatedRiskReduction || rec.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction || 0;
+                              if (reduction >= 15) return '#2e7d32';
+                              if (reduction >= 10) return '#4caf50';
+                              if (reduction >= 5) return '#ff9800';
+                              return '#f44336';
+                            })()
+                          }
+                        }}
+                      />
+                    </Tooltip>
+                  </Box>
+                ) : null}
+              </Box>
+
+              {/* Action Buttons - Right Side */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: 'column', 
+                gap: 1.5,
+                alignItems: 'flex-end',
+                minWidth: '150px'
+              }}>
+                <Button
+                  variant={isAlreadySet ? "outlined" : isApplied ? "outlined" : "contained"}
+                  color={isAlreadySet ? "success" : isApplied ? "warning" : "primary"}
+                  size="small"
+                  disabled={isLocked || isAlreadySet || isApplying}
+                  onClick={() => toggleRecommendation(rec)}
+                  startIcon={
+                    isApplying ? <CircularProgress size={16} /> :
+                    isAlreadySet ? <CheckIcon /> : 
+                    isApplied ? <UndoIcon /> : <PlayArrowIcon />
+                  }
+                  sx={{
+                    width: '140px',
+                    height: '36px',
+                    fontSize: '0.75rem',
+                    ...(isApplied && {
+                      borderColor: 'warning.main',
+                      color: 'warning.main',
+                      '&:hover': {
+                        bgcolor: 'rgba(255, 152, 0, 0.1)',
+                        borderColor: 'warning.dark',
+                      }
+                    })
+                  }}
+                >
+                  {isApplying ? (isApplied ? 'Reverting...' : 'Applying...') :
+                   isAlreadySet ? 'Already Set' : 
+                   isApplied ? 'Revert' : 'Apply Change'}
+                </Button>
+
+                <Tooltip title="Get detailed implementation guidance from AI" arrow>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={() => askChatAboutRecommendation(rec, rec)}
+                    startIcon={<SmartToyIcon />}
+                    sx={{ 
+                      width: '140px',
+                      height: '36px',
+                      fontSize: '0.75rem',
+                      borderColor: 'primary.main',
+                      color: 'primary.main',
+                      '&:hover': {
+                        bgcolor: 'primary.light',
+                        borderColor: 'primary.main'
+                      }
+                    }}
+                  >
+                    Get More Insight
+                  </Button>
+                </Tooltip>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  };
+
+  // Generate detailed prompt for chatbot about specific recommendation
+  const generateRecommendationPrompt = (rec: RiskMitigationRecommendation, enhanced?: RiskMitigationRecommendation | null) => {
+    const costLevel = enhanced?.costLevel || 2;
+    const importance = enhanced?.importance || 'Medium';
+    const costDisplay = '$'.repeat(Math.min(Math.max(costLevel, 1), 4));
+    
+    return `I need detailed guidance on implementing this specific cybersecurity recommendation:
+
+**Recommendation:** ${rec.featureName}
+**Current Setting:** ${rec.currentOption}
+**Recommended Change:** ${rec.recommendedOption}
+**Cost Level:** ${costDisplay} 
+**Priority:** ${importance}
+
+Please provide detailed advice on:
+1. Step-by-step implementation plan
+2. Potential challenges and how to overcome them
+3. Timeline and resource requirements
+4. How this change will specifically impact my project's security
+5. Best practices for maintaining this security measure
+6. Any complementary security measures I should consider
+
+Please be specific to construction industry cybersecurity and consider my project context.`;
+  };
+
+  // Function to switch to chatbot with pre-loaded prompt
+  const askChatAboutRecommendation = (rec: RiskMitigationRecommendation, enhanced?: RiskMitigationRecommendation | null) => {
+    const prompt = generateRecommendationPrompt(rec, enhanced);
+    setChatInput(prompt);
+    setActiveTab(1); // Switch to chatbot tab
+  };
+
+  // Enhanced Recommendation Card Component (keep for backward compatibility)
+  const EnhancedRecommendationCard = ({ 
+    rec, 
+    index 
+  }: { 
+    rec: RiskMitigationRecommendation; 
+    index: number; 
+  }) => {
+    const [enhanced, setEnhanced] = useState<RiskMitigationRecommendation | null>(null);
+    const [isLoadingEnhancement, setIsLoadingEnhancement] = useState(false);
+
+    const recommendationId = `${rec.featureGroup}-${rec.recommendedOption}`;
+    const persistentId = `${rec.featureGroup}-${rec.currentOption}-to-${rec.recommendedOption}`;
+    const lockId = `${rec.featureGroup}-${rec.featureName}`;
+    
+    const isApplied = appliedRecommendations.has(recommendationId) || appliedRecommendations.has(persistentId);
+    const isLocked = lockedRecommendations.has(lockId);
+    const isAlreadySet = rec.currentOption === rec.recommendedOption;
+    const isApplying = applyingRecommendation === recommendationId;
+
+    // Load enhanced description on mount
+    useEffect(() => {
+      let cancelled = false;
+      
+      const loadEnhancement = async () => {
+        if (cancelled) return;
+        
+        const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+        
+        // Check cache first
+        if (enhancedDescriptions.has(cacheKey)) {
+          if (!cancelled) {
+            setEnhanced(enhancedDescriptions.get(cacheKey)!);
+            setIsLoadingEnhancement(false);
+          }
+          return;
+        }
+        
+        if (!cancelled) {
+          setIsLoadingEnhancement(true);
+        }
+        
+        try {
+          const enhancedRec = await getEnhancedRecommendation(rec);
+          if (!cancelled) {
+            setEnhanced(enhancedRec);
+          }
+        } catch (error) {
+          console.error('Failed to load enhancement:', error);
+          if (!cancelled) {
+            setEnhanced(rec);
+          }
+        } finally {
+          if (!cancelled) {
+            setIsLoadingEnhancement(false);
+          }
+        }
+      };
+
+      // Reset enhanced state when rec changes to ensure fresh loading
+      setEnhanced(null);
+      setIsLoadingEnhancement(true);
+      
+      // Small delay to batch multiple simultaneous requests
+      const timeoutId = setTimeout(() => {
+        loadEnhancement();
+      }, 50);
+
+      return () => {
+        cancelled = true;
+        clearTimeout(timeoutId);
+      };
+    }, [rec.featureGroup, rec.featureName, rec.description, rec.currentOption, rec.recommendedOption]); // More comprehensive dependencies
+
+    const getCostDisplay = (costLevel?: number) => {
+      if (!costLevel) return '$$';
+      return '$'.repeat(Math.min(Math.max(costLevel, 1), 4));
+    };
+
+    const getCostColor = (costLevel?: number) => {
+      if (!costLevel) return '#ff9800';
+      switch (costLevel) {
+        case 1: return '#4caf50'; // Green for low cost
+        case 2: return '#ff9800'; // Orange for moderate cost
+        case 3: return '#f44336'; // Red for high cost
+        case 4: return '#d32f2f'; // Dark red for very high cost
+        default: return '#ff9800';
+      }
+    };
+
+    const getImportanceColor = (importance?: string) => {
+      switch (importance?.toLowerCase()) {
+        case 'critical': return '#d32f2f';
+        case 'high': return '#f44336';
+        case 'medium': return '#ff9800';
+        case 'low': return '#4caf50';
+        default: return '#ff9800';
+      }
+    };
+
+    return (
+      <motion.div
+        key={index}
+        layout
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ 
+          opacity: 1, 
+          y: 0,
+          scale: isApplied ? [1, 1.02, 1] : 1,
+        }}
+        transition={{ 
+          duration: 0.3,
+          delay: index * 0.1,
+          scale: { duration: 0.5, times: [0, 0.5, 1] }
+        }}
+      >
+        <Card 
+          variant="outlined" 
+          sx={{
+            position: 'relative',
+            overflow: 'hidden',
+            opacity: isLocked ? 0.7 : 1,
+            ...(isApplied && {
+              bgcolor: (theme) => theme.palette.mode === 'dark' 
+                        ? 'rgba(76, 175, 80, 0.15)' 
+                        : 'success.light',
+              borderColor: 'success.main',
+              boxShadow: (theme) => theme.palette.mode === 'dark'
+                ? '0 0 20px rgba(76, 175, 80, 0.4)'
+                : '0 0 20px rgba(76, 175, 80, 0.3)',
+              color: (theme) => theme.palette.mode === 'dark' 
+                ? 'success.light' 
+                : 'inherit',
+            }),
+            ...(isLocked && {
+              borderColor: 'grey.400',
+              bgcolor: 'grey.50',
+            })
+          }}
+        >
+          {isApplied && (
+            <Box
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 4,
+                bgcolor: 'success.main',
+                background: (theme) => theme.palette.mode === 'dark'
+                  ? 'linear-gradient(90deg, #66bb6a, #a5d6a7, #66bb6a)'
+                  : 'linear-gradient(90deg, #4caf50, #81c784, #4caf50)',
+                backgroundSize: '200% 100%',
+                animation: 'shimmer 2s infinite',
+                '@keyframes shimmer': {
+                  '0%': { backgroundPosition: '-200% 0' },
+                  '100%': { backgroundPosition: '200% 0' }
+                }
+              }}
+            />
+          )}
+          
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+              <Box sx={{ flex: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  <Typography variant="subtitle1" fontWeight="bold">
+                    {rec.featureName}
+                  </Typography>
+                  
+                  {/* Lock Button */}
+                  <Tooltip title={isLocked ? "Unlock recommendation" : "Lock recommendation to prevent changes"} arrow>
+                    <IconButton
+                      size="small"
+                      onClick={() => toggleRecommendationLock(lockId)}
+                      sx={{ 
+                        color: isLocked ? 'warning.main' : 'text.secondary',
+                        '&:hover': {
+                          bgcolor: isLocked ? 'warning.light' : 'action.hover'
+                        }
+                      }}
+                    >
+                      {isLocked ? <LockIcon fontSize="small" /> : <LockOpenIcon fontSize="small" />}
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+
+                {/* Enhanced Description */}
+                {isLoadingEnhancement ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                    <CircularProgress size={16} />
+                    <Typography variant="body2" color="text.secondary">
+                      Loading analysis...
+                    </Typography>
+                  </Box>
+                ) : enhanced?.enhancedDescription ? (
+                  <Box sx={{ mb: 2 }}>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      {enhanced.enhancedDescription}
+                    </Typography>
+                    
+                    {/* Cost, Feasibility, and Importance Tags */}
+                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                      <Chip
+                        label={getCostDisplay(enhanced.costLevel)}
+                        size="small"
+                        sx={{
+                          bgcolor: getCostColor(enhanced.costLevel),
+                          color: 'white',
+                          fontWeight: 'bold',
+                          '& .MuiChip-label': { px: 1 }
+                        }}
+                      />
+                      
+                      {enhanced.importance && (
+                        <Chip
+                          label={`${enhanced.importance} Priority`}
+                          size="small"
+                          sx={{
+                            bgcolor: getImportanceColor(enhanced.importance),
+                            color: 'white',
+                            '& .MuiChip-label': { px: 1 }
+                          }}
+                        />
+                      )}
+                    </Box>
+                  </Box>
+                ) : (
+                  <Typography 
+                    variant="body2" 
+                    sx={{ 
+                      mb: 2,
+                      color: isApplied 
+                        ? (theme) => theme.palette.mode === 'dark' 
+                          ? 'rgba(255, 255, 255, 0.8)' 
+                          : 'text.secondary'
+                        : 'text.secondary'
+                    }}
+                  >
+                    {rec.description}
+                  </Typography>
+                )}
+              </Box>
+
+                             {/* Buttons Container */}
+               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, ml: 2 }}>
+                 {/* Apply Button */}
+                 <Button
+                   variant={isApplied ? "outlined" : isAlreadySet ? "outlined" : "contained"}
+                   color={isApplied ? "success" : "primary"}
+                   size="small"
+                   onClick={() => !isApplied && !isAlreadySet && !isApplying && !isUpdatingStrategy && !isLocked && applyRecommendation(rec)}
+                   disabled={isApplied || isAlreadySet || isApplying || isUpdatingStrategy || isLocked}
+                   sx={{ 
+                     minWidth: 120,
+                     transition: 'all 0.3s ease-in-out',
+                     ...(isApplied && {
+                       bgcolor: (theme) => theme.palette.mode === 'dark' 
+                         ? 'rgba(76, 175, 80, 0.2)'
+                         : 'success.light',
+                       color: (theme) => theme.palette.mode === 'dark'
+                         ? 'success.light'
+                         : 'success.main',
+                       borderColor: 'success.main',
+                       '&:hover': {
+                         bgcolor: (theme) => theme.palette.mode === 'dark' 
+                           ? 'rgba(76, 175, 80, 0.25)'
+                           : 'success.light',
+                       }
+                     }),
+                     ...(isAlreadySet && !isApplied && {
+                       bgcolor: (theme) => theme.palette.mode === 'dark' 
+                         ? 'rgba(158, 158, 158, 0.12)'
+                         : 'grey.100',
+                       color: (theme) => theme.palette.mode === 'dark'
+                         ? 'grey.400'
+                         : 'grey.600',
+                       borderColor: (theme) => theme.palette.mode === 'dark'
+                         ? 'grey.700'
+                         : 'grey.300',
+                       '&:hover': {
+                         bgcolor: (theme) => theme.palette.mode === 'dark' 
+                           ? 'rgba(158, 158, 158, 0.15)'
+                           : 'grey.200',
+                       }
+                     }),
+                     ...(isLocked && {
+                       bgcolor: 'grey.300',
+                       color: 'grey.600',
+                       borderColor: 'grey.400',
+                     })
+                   }}
+                   startIcon={
+                     isApplying ? (
+                       <PulsingLoader size={16} color="inherit" />
+                     ) : isApplied ? (
+                       <motion.div
+                         initial={{ rotate: 0, scale: 0 }}
+                         animate={{ rotate: 360, scale: 1 }}
+                         transition={{ 
+                           duration: 0.6, 
+                           type: "spring", 
+                           stiffness: 200,
+                           delay: 0.1 
+                         }}
+                       >
+                         <CheckIcon />
+                       </motion.div>
+                     ) : isLocked ? (
+                       <LockIcon />
+                     ) : null
+                   }
+                 >
+                   {isApplying ? (
+                     <motion.div
+                       initial={{ opacity: 0 }}
+                       animate={{ opacity: 1 }}
+                       transition={{ duration: 0.2 }}
+                     >
+                       Applying...
+                     </motion.div>
+                   ) : isApplied ? (
+                     <motion.div
+                       initial={{ scale: 0.8, opacity: 0 }}
+                       animate={{ scale: 1, opacity: 1 }}
+                       transition={{ duration: 0.4, type: "spring", stiffness: 200 }}
+                     >
+                       Applied
+                     </motion.div>
+                   ) : isLocked ? (
+                     "Locked"
+                   ) : isAlreadySet ? (
+                     "Already Set"
+                   ) : (
+                     "Apply Change"
+                   )}
+                 </Button>
+
+                 {/* Get More Insight Button */}
+                 <Button
+                   variant="outlined"
+                   color="info"
+                   size="small"
+                   onClick={() => askChatAboutRecommendation(rec, enhanced)}
+                   sx={{
+                     minWidth: 120,
+                     borderColor: 'info.main',
+                     color: 'info.main',
+                     '&:hover': {
+                       bgcolor: 'info.light',
+                       borderColor: 'info.dark',
+                     }
+                   }}
+                   startIcon={<SmartToyIcon />}
+                 >
+                   Get More Insight
+                 </Button>
+               </Box>
+            </Box>
+
+            {/* Current vs Recommended */}
+            <Box sx={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <Box>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Current
+                </Typography>
+                <Typography variant="body2" fontWeight="medium">
+                  {rec.currentOption}
+                </Typography>
+              </Box>
+              <Box sx={{ color: 'primary.main' }}>
+                →
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary" display="block">
+                  Recommended
+                </Typography>
+                <Typography variant="body2" color="primary.main" fontWeight="bold">
+                  {rec.recommendedOption}
+                </Typography>
+              </Box>
+            </Box>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  };
+
   // Trigger risk mitigation analysis when form is completed
   useEffect(() => {
     if (isFormComplete() && !riskMitigationStrategy) {
@@ -2867,8 +4472,41 @@ const RiskQuantification = () => {
     }
   }, [riskResults]);
 
+  // Track loading state when round changes
+  useEffect(() => {
+    if (riskMitigationStrategy && selectedRound > 0) {
+      const round = riskMitigationStrategy.rounds.find(r => r.roundNumber === selectedRound);
+      if (round) {
+        const roundRecommendationKeys = round.recommendations.map(rec => 
+          `${rec.featureGroup}-${rec.featureName}-${rec.description}`
+        );
+        
+        // Check if any recommendations need loading
+        const needsLoading = roundRecommendationKeys.some(key => !enhancedDescriptions.has(key));
+        if (needsLoading) {
+          // Mark all unloaded recommendations as loading
+          setLoadingRecommendations(prev => {
+            const newSet = new Set(prev);
+            roundRecommendationKeys.forEach(key => {
+              if (!enhancedDescriptions.has(key)) {
+                newSet.add(key);
+              }
+            });
+            return newSet;
+          });
+        }
+      }
+    }
+  }, [selectedRound, riskMitigationStrategy, enhancedDescriptions]);
+
   // Dev function to auto-fill form with sample data
   const autoFillForm = () => {
+    // Admin check for security
+    if (!isAdmin()) {
+      console.warn('⚠️ Access Denied: Admin privileges required for dev tools');
+      return;
+    }
+    
     const sampleData: ProjectInfo = {
       // Section 1: Basic Project Information
       projectDuration: '12-24m',
@@ -2922,6 +4560,11 @@ const RiskQuantification = () => {
 
   // Dev function to clear all form data
   const clearForm = () => {
+    // Admin check for security
+    if (!isAdmin()) {
+      console.warn('⚠️ Access Denied: Admin privileges required for dev tools');
+      return;
+    }
     setProjectInfo({
       projectDuration: '', projectType: '', hasCyberLegalTeam: '', companyScale: '', projectPhase: '',
       layer1Teams: '', layer2Teams: '', layer3Teams: '', teamOverlap: '', hasITTeam: '', devicesWithFirewall: '', networkType: '',
@@ -2938,119 +4581,626 @@ const RiskQuantification = () => {
     }
   };
 
-  // Export chat functionality
+  // --- NEW: Mock mitigation strategy generator ---
+  const generateMockMitigationStrategy = (): RiskMitigationStrategy => {
+    // Helper to distribute reduction among recommendations
+    const distributeReduction = (total: number, count: number) => {
+      // Give higher reduction to first rec, then spread remainder
+      if (count === 1) return [total];
+      if (count === 2) return [Math.round(total * 0.6 * 100) / 100, Math.round(total * 0.4 * 100) / 100];
+      // For 3+, first gets 45%, second 35%, rest split
+      const first = Math.round(total * 0.45 * 100) / 100;
+      const second = Math.round(total * 0.35 * 100) / 100;
+      const rest = total - first - second;
+      const restEach = Math.round((rest / (count - 2)) * 100) / 100;
+      return [first, second, ...Array(count - 2).fill(restEach)];
+    };
+    return {
+      initialRisk: 0.92,
+      finalRisk: 0.22,
+      totalReduction: 0.7,
+      totalReductionPercentage: 76.1,
+      implementationPriority: 'high',
+      rounds: [
+        {
+          roundNumber: 1,
+          features: ['Firewall Coverage', 'MFA', 'Vendor Security'],
+          currentRisk: 0.92,
+          projectedRisk: 0.61,
+          riskReduction: 0.31,
+          reductionPercentage: 33.7,
+          recommendations: (() => {
+            const recs = [
+              {
+                featureGroup: '3.2',
+                featureName: 'Firewall Coverage',
+                currentOption: 'Partial',
+                recommendedOption: 'Full',
+                optionIndex: 2,
+                description: 'Upgrade all devices to have firewall protection.',
+                enhancedDescription: 'Ensures all endpoints are protected from network threats.',
+                costLevel: 2,
+                importance: 'High',
+              },
+              {
+                featureGroup: '4.3',
+                featureName: 'MFA',
+                currentOption: 'No',
+                recommendedOption: 'Yes',
+                optionIndex: 1,
+                description: 'Enable multi-factor authentication for all users.',
+                enhancedDescription: 'Adds a strong layer of defense against account compromise.',
+                costLevel: 1,
+                importance: 'High',
+              },
+              {
+                featureGroup: '3.5',
+                featureName: 'Vendor Security',
+                currentOption: 'Basic',
+                recommendedOption: 'Advanced',
+                optionIndex: 2,
+                description: 'Require advanced security controls for all vendors.',
+                enhancedDescription: 'Reduces supply chain risk from third parties.',
+                costLevel: 3,
+                importance: 'Medium',
+              },
+            ];
+            const reductions = distributeReduction(33.7, recs.length);
+            return recs.map((rec, i) => ({
+              ...rec,
+              riskReduction: Math.round((reductions[i] / 100) * 0.92 * 1000) / 1000, // relative to initial risk
+              riskReductionPercentage: reductions[i],
+            }));
+          })(),
+        },
+        {
+          roundNumber: 2,
+          features: ['Password Reuse Policy', 'Security Training Effectiveness'],
+          currentRisk: 0.61,
+          projectedRisk: 0.33,
+          riskReduction: 0.28,
+          reductionPercentage: 45.9,
+          recommendations: (() => {
+            const recs = [
+              {
+                featureGroup: '4.2',
+                featureName: 'Password Reuse Policy',
+                currentOption: 'Yes',
+                recommendedOption: 'No',
+                optionIndex: 1,
+                description: 'Disallow password reuse across all project accounts.',
+                enhancedDescription: 'Restricting password reuse helps prevent credential stuffing attacks.',
+                costLevel: 1,
+                importance: 'High',
+              },
+              {
+                featureGroup: '3.4',
+                featureName: 'Security Training Effectiveness',
+                currentOption: '61-80%',
+                recommendedOption: '<=20',
+                optionIndex: 0,
+                description: 'Improve security awareness training to reduce phishing test failure rate.',
+                enhancedDescription: 'Better training will lower the risk of successful phishing attacks.',
+                costLevel: 2,
+                importance: 'Medium',
+              },
+            ];
+            const reductions = distributeReduction(45.9, recs.length);
+            return recs.map((rec, i) => ({
+              ...rec,
+              riskReduction: Math.round((reductions[i] / 100) * 0.61 * 1000) / 1000, // relative to round start
+              riskReductionPercentage: reductions[i],
+            }));
+          })(),
+        },
+        {
+          roundNumber: 3,
+          features: ['Governance Level'],
+          currentRisk: 0.33,
+          projectedRisk: 0.22,
+          riskReduction: 0.11,
+          reductionPercentage: 33.3,
+          recommendations: [
+            {
+              featureGroup: '4.1',
+              featureName: 'Governance Level',
+              currentOption: 'level2',
+              recommendedOption: 'level5',
+              optionIndex: 4,
+              description: 'Elevate governance maturity to exemplary standards.',
+              enhancedDescription: 'Strong governance ensures long-term security and compliance.',
+              costLevel: 3,
+              importance: 'Medium',
+              riskReduction: 0.11,
+              riskReductionPercentage: 33.3,
+            },
+          ],
+        },
+      ],
+    };
+  };
+
+  // --- NEW: Refresh results/strategy when useRandomResults changes ---
+  useEffect(() => {
+    if (!isFormComplete()) return;
+    // When toggling random results, refresh risk results and mitigation strategy
+    const refresh = async () => {
+      setIsLoading(true);
+      setApiError(null);
+      try {
+        if (useRandomResults) {
+          const results = generateRandomResults();
+          setRiskResults(results);
+          // Ensure mock mitigation strategy is set in demo mode
+          const mockStrategy = generateMockMitigationStrategy();
+          setRiskMitigationStrategy(mockStrategy);
+          // Ensure enhanced descriptions are loaded for mock strategy
+          await loadAllEnhancedDescriptions(mockStrategy);
+        } else {
+          const results = await riskApiService.calculateRisk(projectInfo);
+          setRiskResults(results);
+          // Re-analyze mitigation with real data
+          await analyzeRiskMitigation();
+        }
+      } catch (error) {
+        setApiError((error as Error).message || 'Failed to update results');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useRandomResults]);
+
+  // Enhanced Export chat functionality with modern design and text formatting
   const handleExportChat = () => {
     if (!currentConversation) return;
 
-    const doc = new jsPDF();
+    const doc = new jsPDF() as ExtendedJsPDF;
     const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 20;
     const contentWidth = pageWidth - (2 * margin);
     let yOffset = 20;
 
-    // Add header with logo and title
-    doc.setFillColor(79, 70, 229); // Primary indigo color
-    doc.rect(0, 0, pageWidth, 40, 'F');
-    
-    // Add title
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(20);
+    // Modern color palette
+    const colors = {
+      primary: [79, 70, 229] as [number, number, number], // Indigo
+      secondary: [6, 182, 212] as [number, number, number], // Cyan
+      accent: [16, 185, 129] as [number, number, number], // Emerald
+      success: [34, 197, 94] as [number, number, number],
+      warning: [245, 158, 11] as [number, number, number],
+      error: [239, 68, 68] as [number, number, number],
+      critical: [185, 28, 28] as [number, number, number],
+      text: [15, 23, 42] as [number, number, number],
+      textLight: [100, 116, 139] as [number, number, number],
+      background: [248, 250, 252] as [number, number, number],
+      white: [255, 255, 255] as [number, number, number],
+      gray: [226, 232, 240] as [number, number, number],
+      darkGray: [71, 85, 105] as [number, number, number]
+    };
+
+    // Helper function to check if we need a new page
+    const checkPageBreak = (neededSpace: number) => {
+      if (yOffset + neededSpace > pageHeight - 50) {
+        doc.addPage();
+        yOffset = margin;
+        return true;
+      }
+      return false;
+    };
+
+    // Enhanced text parsing with proper page break handling
+    const parseAndFormatText = (text: string, x: number, startY: number, maxWidth: number) => {
+      yOffset = startY; // Use global yOffset for proper page break tracking
+      const lineHeight = 6;
+      
+      // Clean and normalize the text
+      const cleanText = text
+        .replace(/\*\*(.*?)\*\*/g, '$1') // Remove bold markers for now
+        .replace(/\*(.*?)\*/g, '$1') // Remove italic markers
+        .replace(/#{1,3}\s+/g, '') // Remove header markers
+        .trim();
+
+      // Split into paragraphs
+      const paragraphs = cleanText.split(/\n\s*\n/);
+      
+      paragraphs.forEach((paragraph, paragraphIndex) => {
+        if (!paragraph.trim()) return;
+        
+        // Split paragraph into lines that fit the width
+        const lines = paragraph.split('\n');
+        
+        lines.forEach(line => {
+          if (!line.trim()) {
+            // Check page break for empty lines
+            if (checkPageBreak(lineHeight)) {
+              // Page break occurred, continue on new page
+            }
+            yOffset += lineHeight;
+            return;
+          }
+          
+          // Handle bullet points
+          if (line.match(/^[\s]*[-*•]\s+/)) {
+            const bulletText = line.replace(/^[\s]*[-*•]\s+/, '').trim();
+            
+            // Pre-calculate space needed
+            const wrappedBullet = doc.splitTextToSize(bulletText, maxWidth - 12);
+            const spaceNeeded = wrappedBullet.length * lineHeight + 2;
+            
+            // Check page break before rendering
+            if (checkPageBreak(spaceNeeded)) {
+              // Page break occurred, continue on new page
+            }
+            
+            // Add bullet point
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+            doc.text('•', x, yOffset);
+            
+            // Add bullet text with proper wrapping
+            doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+            doc.text(wrappedBullet, x + 10, yOffset);
+            yOffset += spaceNeeded;
+            return;
+          }
+          
+          // Handle numbered lists
+          if (line.match(/^\s*\d+\.\s+/)) {
+            const match = line.match(/^(\s*)(\d+\.\s+)(.*)$/);
+            if (match) {
+              const [, indent, number, text] = match;
+              
+              // Pre-calculate space needed
+              const wrappedList = doc.splitTextToSize(text.trim(), maxWidth - 20);
+              const spaceNeeded = wrappedList.length * lineHeight + 2;
+              
+              // Check page break before rendering
+              if (checkPageBreak(spaceNeeded)) {
+                // Page break occurred, continue on new page
+              }
+              
+              // Add number
     doc.setFont('helvetica', 'bold');
-    doc.text('Risk Analysis Chat Export', pageWidth / 2, 25, { align: 'center' });
-    
-    // Add timestamp
+              doc.setFontSize(10);
+              doc.setTextColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+              doc.text(number.trim(), x, yOffset);
+              
+              // Add list text with proper wrapping
+              doc.setFont('helvetica', 'normal');
+              doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+              doc.text(wrappedList, x + 15, yOffset);
+              yOffset += spaceNeeded;
+            }
+            return;
+          }
+          
+          // Regular text with proper wrapping and page break handling
+          doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
-    doc.text(`Generated on: ${new Date().toLocaleString()}`, pageWidth / 2, 35, { align: 'center' });
-    
-    // Reset text color for content
-    doc.setTextColor(0, 0, 0);
-    yOffset = 60;
+          doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+          
+          const wrappedText = doc.splitTextToSize(line.trim(), maxWidth);
+          
+          // Handle each wrapped line individually for page breaks
+          wrappedText.forEach((wrappedLine: string, lineIndex: number) => {
+            // Check page break for each line
+            if (checkPageBreak(lineHeight + 1)) {
+              // Page break occurred, continue on new page
+            }
+            
+            doc.text(wrappedLine, x, yOffset);
+            yOffset += lineHeight + 1;
+          });
+        });
+        
+        // Add space between paragraphs
+        if (paragraphIndex < paragraphs.length - 1) {
+          if (checkPageBreak(lineHeight)) {
+            // Page break occurred, continue on new page
+          }
+          yOffset += lineHeight;
+        }
+      });
+
+      return yOffset;
+    };
+
+    // Modern header with gradient effect
+    const addModernHeader = () => {
+      // Header background with gradient effect
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+      doc.rect(0, 0, pageWidth, 50, 'F');
+      
+      // Add subtle accent bar
+      doc.setFillColor(colors.secondary[0], colors.secondary[1], colors.secondary[2]);
+      doc.rect(0, 50, pageWidth, 3, 'F');
+      
+      // Title
+      doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
+      doc.setFontSize(24);
+      doc.setFont('helvetica', 'bold');
+      doc.text('AI CONVERSATION EXPORT', pageWidth / 2, 25, { align: 'center' });
+      
+      // Subtitle
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      doc.text('Cyber Risk Analysis Consultation', pageWidth / 2, 40, { align: 'center' });
+      
+      yOffset = 65;
+    };
+
+    // Add conversation metadata section
+    const addMetadataSection = () => {
+      checkPageBreak(40);
+      
+      // Metadata background
+      doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
+      doc.rect(margin, yOffset, contentWidth, 35, 'F');
+      doc.setDrawColor(colors.gray[0], colors.gray[1], colors.gray[2]);
+      doc.rect(margin, yOffset, contentWidth, 35);
+      
+      // Metadata content
+      doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.text('CONVERSATION DETAILS', margin + 10, yOffset + 12);
+      
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
+      
+      const conversationDate = currentConversation.lastUpdated.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      
+      const conversationTime = currentConversation.lastUpdated.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      
+      doc.text(`Conversation Date: ${conversationDate} at ${conversationTime}`, margin + 10, yOffset + 20);
+      doc.text(`Messages: ${currentConversation.messages.length} | Export Date: ${new Date().toLocaleDateString()}`, margin + 10, yOffset + 27);
+      
+      yOffset += 45;
+    };
 
     // Add risk context section
-    doc.setFontSize(14);
+    const addRiskContextSection = () => {
+      checkPageBreak(60);
+      
+      // Section header
+      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
+      doc.rect(margin, yOffset, contentWidth, 20, 'F');
+      
+      doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
+      doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Risk Assessment Context', margin, yOffset);
-    yOffset += 15;
-
+      doc.text('RISK ASSESSMENT CONTEXT', margin + 10, yOffset + 13);
+      
+      yOffset += 25;
+      
+      // Risk scores table
+      const riskScores = Object.entries(riskResults);
+      const tableWidth = contentWidth;
+      const colWidth = tableWidth / 3;
+      
+      riskScores.forEach(([riskType, analysis], index) => {
+        checkPageBreak(18);
+        
+        const riskColor = analysis.level === 'critical' ? colors.critical :
+                         analysis.level === 'high' ? colors.error :
+                         analysis.level === 'medium' ? colors.warning :
+                         colors.success;
+        
+        // Row background
+        const rowColor = index % 2 === 0 ? colors.background : colors.white;
+        doc.setFillColor(rowColor[0], rowColor[1], rowColor[2]);
+        doc.rect(margin, yOffset, contentWidth, 15, 'F');
+        
+        // Risk type
+        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
     doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        const riskName = riskType.charAt(0).toUpperCase() + riskType.slice(1).replace(/([A-Z])/g, ' $1');
+        doc.text(riskName, margin + 5, yOffset + 9);
+        
+        // Score with progress bar
+        const scoreX = margin + colWidth;
+        doc.setFillColor(colors.gray[0], colors.gray[1], colors.gray[2]);
+        doc.rect(scoreX, yOffset + 4, 40, 7, 'F');
+        
+        const scorePercent = analysis.score / 100;
+        doc.setFillColor(riskColor[0], riskColor[1], riskColor[2]);
+        doc.rect(scoreX, yOffset + 4, 40 * scorePercent, 7, 'F');
+        
+        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
     doc.setFont('helvetica', 'normal');
-    const riskSummary = Object.entries(riskResults)
-      .map(([risk, analysis]) => `${risk}: ${analysis.score}% (${analysis.level})`)
-      .join(', ');
-    const wrappedRiskSummary = doc.splitTextToSize(riskSummary, contentWidth);
-    doc.text(wrappedRiskSummary, margin, yOffset);
-    yOffset += wrappedRiskSummary.length * 5 + 15;
+        doc.text(`${analysis.score}%`, scoreX + 45, yOffset + 9);
+        
+        // Risk level
+        doc.setTextColor(riskColor[0], riskColor[1], riskColor[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text(analysis.level.toUpperCase(), margin + 2 * colWidth, yOffset + 9);
+        
+        yOffset += 18;
+      });
+      
+      yOffset += 10;
+    };
 
-    // Add separator line
-    doc.setDrawColor(200, 200, 200);
-    doc.line(margin, yOffset, pageWidth - margin, yOffset);
-    yOffset += 15;
-
-    // Add conversation content
+    // Add conversation messages
+    const addConversationMessages = () => {
+      // Section header
+      doc.setFillColor(colors.secondary[0], colors.secondary[1], colors.secondary[2]);
+      doc.rect(margin, yOffset, contentWidth, 20, 'F');
+      
+      doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Conversation History', margin, yOffset);
-    yOffset += 20;
+      doc.text('CONVERSATION HISTORY', margin + 10, yOffset + 13);
+      
+      yOffset += 30;
 
     currentConversation.messages.forEach((message, index) => {
-      const sender = message.sender === 'user' ? 'You' : 'AI Assistant';
-      const timestamp = message.timestamp.toLocaleString();
-      
-      // Add message header
-      if (message.sender === 'user') {
-        doc.setFillColor(79, 70, 229); // Primary indigo for user
-      } else {
-        doc.setFillColor(6, 182, 212); // Secondary cyan for AI
-      }
-      doc.roundedRect(margin, yOffset, contentWidth, 15, 3, 3, 'F');
-      
-      doc.setTextColor(255, 255, 255);
+        const sender = message.sender === 'user' ? 'You' : 'Dr. CyberBuild AI';
+        const timestamp = message.timestamp.toLocaleString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        
+        checkPageBreak(25);
+        
+        // Message header with user/AI distinction
+        const headerColor = message.sender === 'user' ? colors.primary : colors.secondary;
+        doc.setFillColor(headerColor[0], headerColor[1], headerColor[2]);
+        doc.roundedRect(margin, yOffset, contentWidth, 16, 2, 2, 'F');
+        
+        // Sender name and timestamp
+        doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(11);
-      doc.text(sender, margin + 5, yOffset + 10);
+        doc.setFontSize(10);
+        doc.text(sender, margin + 8, yOffset + 10);
       
       doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.text(timestamp, pageWidth - margin - 5, yOffset + 10, { align: 'right' });
-      
-      yOffset += 20;
-
-      // Add message content
-      doc.setTextColor(0, 0, 0);
-      doc.setFontSize(10);
-      const splitText = doc.splitTextToSize(message.text, contentWidth - 10);
-      doc.text(splitText, margin + 5, yOffset);
-      yOffset += splitText.length * 6 + 15;
-
-      // Add separator line
+        doc.setFontSize(8);
+        doc.text(timestamp, pageWidth - margin - 8, yOffset + 10, { align: 'right' });
+        
+        yOffset += 22;
+        
+        // Message content - render directly with page break handling
+        const contentStartY = yOffset;
+        
+        // Add a small top margin for content
+        yOffset += 3;
+        
+        // Render the text content with proper page break handling
+        yOffset = parseAndFormatText(message.text, margin + 8, yOffset, contentWidth - 16);
+        yOffset += 8;
+        
+        // Add separator line between messages (except for the last one)
       if (index < currentConversation.messages.length - 1) {
-        doc.setDrawColor(230, 230, 230);
-        doc.line(margin, yOffset, pageWidth - margin, yOffset);
-        yOffset += 10;
-      }
+          doc.setDrawColor(220, 220, 220);
+          doc.setLineWidth(0.5);
+          doc.line(margin + 15, yOffset, pageWidth - margin - 15, yOffset);
+          yOffset += 8;
+        }
+      });
+    };
 
-      // Add new page if needed
-      if (yOffset > 270) {
-        doc.addPage();
-        yOffset = 20;
-      }
-    });
+    // Generate the PDF
+    addModernHeader();
+    addMetadataSection();
+    addRiskContextSection();
+    addConversationMessages();
 
-    // Add footer
-    const totalPages = doc.internal.pages.length - 1;
-    for (let i = 1; i <= totalPages; i++) {
+    // Add professional footer to all pages
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
+      
+      // Footer background
+      doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
+      doc.rect(0, pageHeight - 25, pageWidth, 25, 'F');
+      
+      // Footer content
+      doc.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
       doc.setFontSize(8);
-      doc.setTextColor(128, 128, 128);
-      doc.text(
-        `Page ${i} of ${totalPages} | Risk Analysis Chat Export | ${new Date().toLocaleDateString()}`,
-        pageWidth / 2,
-        doc.internal.pageSize.getHeight() - 10,
-        { align: 'center' }
-      );
+      doc.setFont('helvetica', 'normal');
+      
+      // Company branding
+      doc.setFont('helvetica', 'bold');
+      doc.text('CYBER RISK DASHBOARD', margin, pageHeight - 12);
+      
+      // Page number (centered)
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2 - 10, pageHeight - 12);
+      
+      // Export date (right)
+      doc.text(new Date().toLocaleDateString(), pageWidth - margin - 30, pageHeight - 12);
+      
+      // Decorative line
+      doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+      doc.setLineWidth(1);
+      doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
     }
 
-    doc.save(`risk-analysis-chat-${currentConversation.id}-${new Date().toISOString().split('T')[0]}.pdf`);
+    // Save with descriptive filename
+    const safeTitle = currentConversation.title.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+    const dateStr = new Date().toISOString().split('T')[0];
+    doc.save(`cyber-risk-chat-${safeTitle}-${dateStr}.pdf`);
+  };
+
+  // Save project functionality
+  const handleSaveProject = () => {
+    setSaveDialogOpen(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+  };
+
+  const handleSaveConfirm = async () => {
+    if (!projectName.trim()) {
+      setSaveError('Please enter a project name');
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const projectData = {
+        projectName: projectName.trim(),
+        projectInfo,
+        riskResults,
+        mitigationStrategy: riskMitigationStrategy,
+        conversations
+      };
+
+      await projectService.saveProject(projectData);
+      
+      setSaveSuccess(true);
+      setProjectName('');
+      
+      // Close dialog after 2 seconds
+      setTimeout(() => {
+        setSaveDialogOpen(false);
+        setSaveSuccess(false);
+      }, 2000);
+
+    } catch (error) {
+      console.error('Save project error:', error);
+      setSaveError((error as Error).message || 'Failed to save project');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSaveCancel = () => {
+    setSaveDialogOpen(false);
+    setProjectName('');
+    setSaveError(null);
+    setSaveSuccess(false);
+  };
+  const [sortBy, setSortBy] = useState('default');
+
+  const getSortedRecommendations = (recs: RiskMitigationRecommendation[], sortBy: string) => {
+    if (sortBy === 'riskReduction') {
+      return [...recs].sort((a, b) => (b.riskReductionPercentage || 0) - (a.riskReductionPercentage || 0));
+    }
+    if (sortBy === 'cost') {
+      return [...recs].sort((a, b) => (a.costLevel || 2) - (b.costLevel || 2));
+    }
+    if (sortBy === 'priority') {
+      const priorityValue = (imp: string | undefined) => imp === 'High' ? 2 : imp === 'Medium' ? 1 : 0;
+      return [...recs].sort((a, b) => priorityValue(b.importance) - priorityValue(a.importance));
+    }
+    return recs;
   };
 
   return (
@@ -3064,70 +5214,73 @@ const RiskQuantification = () => {
           Risk Quantification
         </Typography>
 
-        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4, mb: 3 }}>
-          <Tooltip title="Enable development tools: auto-fill form, clear form, and show debug info" arrow>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={devMode}
-                  onChange={(e) => setDevMode(e.target.checked)}
-                  color="secondary"
-                />
-              }
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <DeveloperModeIcon fontSize="small" />
-                  <Typography variant="body2" color="text.secondary">
-                    Dev Mode
-                  </Typography>
-                </Box>
-              }
-            />
-          </Tooltip>
-          {devMode && (
-            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+        {/* Admin-only Developer Tools */}
+        {isAdmin() && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 4, mb: 3 }}>
+            <Tooltip title="Enable development tools: auto-fill form, clear form, and show debug info (Admin Only)" arrow>
               <FormControlLabel
                 control={
                   <Switch
-                    checked={useRandomResults}
-                    onChange={(e) => setUseRandomResults(e.target.checked)}
-                    color="primary"
+                    checked={devMode}
+                    onChange={(e) => setDevMode(e.target.checked)}
+                    color="secondary"
                   />
                 }
                 label={
-                  <Typography variant="body2" color="text.secondary">
-                    {useRandomResults ? 'Using Random Results' : 'Using AI Model'}
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <DeveloperModeIcon fontSize="small" />
+                    <Typography variant="body2" color="text.secondary">
+                      Dev Mode (Admin)
+                    </Typography>
+                  </Box>
                 }
               />
-              <Divider orientation="vertical" flexItem />
-              <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={autoFillForm}
-                  color="success"
-                >
-                  Auto-Fill Form
-                </Button>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  onClick={clearForm}
-                  color="error"
-                >
-                  Clear Form
-                </Button>
+            </Tooltip>
+            {devMode && (
+              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={useRandomResults}
+                      onChange={(e) => setUseRandomResults(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" color="text.secondary">
+                      {useRandomResults ? 'Using Random Results' : 'Using AI Model'}
+                    </Typography>
+                  }
+                />
+                <Divider orientation="vertical" flexItem />
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={autoFillForm}
+                    color="success"
+                  >
+                    Auto-Fill Form
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    onClick={clearForm}
+                    color="error"
+                  >
+                    Clear Form
+                  </Button>
+                </Box>
               </Box>
-            </Box>
-          )}
-        </Box>
+            )}
+          </Box>
+        )}
 
-        {/* Dev Info Panel */}
-        {devMode && (
+        {/* Dev Info Panel - Admin Only */}
+        {isAdmin() && devMode && (
           <Alert severity="info" sx={{ mb: 3 }}>
             <Typography variant="body2">
-              <strong>🛠️ Dev Mode Active</strong> | 
+              <strong>🛠️ Admin Dev Mode Active</strong> | 
               Form Completion: {getCompletionPercentage()}% | 
               Form Valid: {isFormComplete() ? '✅' : '❌'} | 
               Risk Results: {Object.values(riskResults).some(r => r.score > 0) ? '✅' : '❌'}
@@ -3185,12 +5338,26 @@ const RiskQuantification = () => {
               {/* Risk Reduction Tab */}
               {activeTab === 0 && (
                 <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Risk Mitigation Strategy
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                    AI-powered analysis of optimal security improvements organized in implementation rounds for maximum risk reduction:
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Box>
+                      <Typography variant="h6" gutterBottom>
+                        Risk Mitigation Strategy
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        AI-powered analysis of optimal security improvements organized in implementation rounds for maximum risk reduction.
+                      </Typography>
+                    </Box>
+                    {riskMitigationStrategy && (
+                      <Button
+                        variant="outlined"
+                        startIcon={<AutoFixHighIcon />}
+                        onClick={analyzeRiskMitigation}
+                        disabled={isAnalyzingReductions || isUpdatingStrategy}
+                      >
+                        Refresh Analysis
+                      </Button>
+                    )}
+                  </Box>
 
                   {(isAnalyzingReductions && !isUpdatingStrategy && !riskMitigationStrategy) ? (
                     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
@@ -3200,533 +5367,23 @@ const RiskQuantification = () => {
                     </Typography>
                     </Box>
                   ) : riskMitigationStrategy ? (
-                    <Box sx={{ position: 'relative' }}>
-                      {/* Subtle overlay during strategy updates */}
-                      <AnimatePresence>
-                        {isUpdatingStrategy && (
-                          <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.3 }}
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              bottom: 0,
-                              backgroundColor: 'rgba(255, 255, 255, 0.7)',
-                              backdropFilter: 'blur(2px)',
-                              zIndex: 10,
-                          display: 'flex', 
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              borderRadius: 8,
-                            }}
-                          >
-                            <Box sx={{ 
-                              display: 'flex', 
-                              flexDirection: 'column', 
-                              alignItems: 'center',
-                          gap: 2,
-                              p: 3,
-                              borderRadius: 2,
-                              bgcolor: 'white',
-                              boxShadow: 2
-                            }}>
-                              <CircularProgress size={24} />
-                              <Typography variant="body2" color="text.secondary">
-                                Updating strategy...
-                              </Typography>
-                            </Box>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                      
-                      <Box>
-                      {/* Strategy Overview */}
-                      <Paper variant="outlined" sx={{ p: 3, mb: 3, bgcolor: 'primary.light', color: 'primary.contrastText' }}>
-                        <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <AutoFixHighIcon />
-                          Mitigation Strategy Overview
-                           </Typography>
-                        <Grid container spacing={3}>
-                          <Grid item xs={12} sm={6} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                              <Typography variant="h4" fontWeight="bold">
-                                {(riskMitigationStrategy.totalReductionPercentage).toFixed(1)}%
-                                     </Typography>
-                              <Typography variant="body2">Total Risk Reduction</Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                              <Typography variant="h4" fontWeight="bold">
-                                {riskMitigationStrategy.rounds.length}
-                                         </Typography>
-                              <Typography variant="body2">Implementation Rounds</Typography>
-                            </Box>
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                              <Typography variant="h4" fontWeight="bold">
-                                {(riskMitigationStrategy.initialRisk * 100).toFixed(0)}%
-                                         </Typography>
-                              <Typography variant="body2">Initial Risk</Typography>
-                                       </Box>
-                          </Grid>
-                          <Grid item xs={12} sm={6} md={3}>
-                            <Box sx={{ textAlign: 'center' }}>
-                              <Typography variant="h4" fontWeight="bold">
-                                {(riskMitigationStrategy.finalRisk * 100).toFixed(0)}%
-                                         </Typography>
-                              <Typography variant="body2">Final Risk</Typography>
-                            </Box>
-                          </Grid>
-                        </Grid>
-                      </Paper>
-
-                      {/* Round Selection */}
-                      <Box sx={{ mb: 3 }}>
-                        <Typography variant="subtitle1" gutterBottom>
-                          Implementation Rounds
-                                         </Typography>
-                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                          <Chip
-                            label="Overview"
-                            onClick={() => !isUpdatingStrategy && setSelectedRound(0)}
-                            color={selectedRound === 0 ? "primary" : "default"}
-                            variant={selectedRound === 0 ? "filled" : "outlined"}
-                            disabled={isUpdatingStrategy}
-                          />
-                          {riskMitigationStrategy.rounds.map((round) => (
-                            <Chip
-                              key={round.roundNumber}
-                              label={`Round ${round.roundNumber}`}
-                              onClick={() => !isUpdatingStrategy && setSelectedRound(round.roundNumber)}
-                              color={selectedRound === round.roundNumber ? "primary" : "default"}
-                              variant={selectedRound === round.roundNumber ? "filled" : "outlined"}
-                              disabled={isUpdatingStrategy}
-                            />
-                          ))}
-                                       </Box>
-                                     </Box>
-
-                      {/* Round Content */}
-                      {(isUpdatingStrategy ? preservedRound : selectedRound) === 0 ? (
-                        // Overview of all rounds
-                        <Box>
-                          <Typography variant="h6" gutterBottom>
-                            Implementation Roadmap
-                                     </Typography>
-                          {riskMitigationStrategy.rounds.map((round, index) => (
-                            <Card key={round.roundNumber} sx={{ mb: 2 }}>
-                              <CardContent>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                                  <Typography variant="h6">
-                                    Round {round.roundNumber}
-                                     </Typography>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                                     <Chip
-                                      label={`-${round.reductionPercentage.toFixed(1)}%`}
-                                       color="success"
-                            size="small"
-                                    />
-                                    <Button
-                                      size="small"
-                                      onClick={() => setSelectedRound(round.roundNumber)}
-                                    >
-                                      View Details
-                                    </Button>
-                                   </Box>
-                                 </Box>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                  Focus Areas: {round.features.join(', ')}
-                                </Typography>
-                                <Box sx={{ position: 'relative', mb: 1 }}>
-                                  {/* Multi-segment progress bar */}
-                                  <Box
-                            sx={{
-                                      height: 12,
-                                      borderRadius: 6,
-                                      bgcolor: 'grey.200',
-                                      position: 'relative',
-                                      overflow: 'hidden',
-                                      boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.1)'
-                                    }}
-                                  >
-                                                                         {/* Risk level after round implementation */}
-                                     <Box
-                                       sx={{
-                                         height: '100%',
-                                         width: `${(round.projectedRisk * 100)}%`,
-                                         background: (() => {
-                                           const riskPercent = round.projectedRisk * 100;
-                                           if (riskPercent < 30) {
-                                             return 'linear-gradient(90deg, #4caf50, #66bb6a)'; // Low risk - Green
-                                           } else if (riskPercent < 60) {
-                                             return 'linear-gradient(90deg, #ff9800, #ffb74d)'; // Medium risk - Orange
-                                           } else if (riskPercent < 85) {
-                                             return 'linear-gradient(90deg, #f44336, #ef5350)'; // High risk - Red
-                                           } else {
-                                             return 'linear-gradient(90deg, #d32f2f, #c62828)'; // Critical risk - Dark Red
-                                           }
-                                         })(),
-                                        borderRadius: 6,
-                                        position: 'relative',
-                                        transition: 'all 0.3s ease-in-out',
-                                        '&::after': {
-                                          content: '""',
-                                          position: 'absolute',
-                                          top: 0,
-                                          left: 0,
-                                          right: 0,
-                                          bottom: 0,
-                                          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)',
-                                          animation: 'shimmer 2s infinite',
-                                          '@keyframes shimmer': {
-                                            '0%': { transform: 'translateX(-100%)' },
-                                            '100%': { transform: 'translateX(100%)' }
-                                          }
-                              }
-                            }}
-                          />
-                                    
-                                    {/* Progress text overlay */}
-                                    <Box
-                              sx={{ 
-                                        position: 'absolute',
-                                        top: 0,
-                                        left: 0,
-                                        right: 0,
-                                        bottom: 0,
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'center'
-                                      }}
-                                    >
-                            <Typography 
-                              variant="caption" 
-                              sx={{ 
-                                           color: 'white',
-                                           fontWeight: 'bold',
-                                           fontSize: '0.7rem',
-                                           textShadow: '0 1px 2px rgba(0,0,0,0.5)',
-                                           zIndex: 1
-                                         }}
-                                       >
-                                         {(round.projectedRisk * 100).toFixed(0)}% Risk
-                            </Typography>
-                          </Box>
-                        </Box>
-                                  
-                                                                     {/* Risk level indicators */}
-                                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 0.5 }}>
-                                     <Typography variant="caption" color="text.secondary">
-                                       Reduction: {round.reductionPercentage.toFixed(1)}% → {(round.projectedRisk * 100).toFixed(0)}% risk remaining
-                      </Typography>
-                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                                       <Box
-                                         sx={{
-                                           width: 8,
-                                           height: 8,
-                                           borderRadius: '50%',
-                                           bgcolor: (() => {
-                                             const riskPercent = round.projectedRisk * 100;
-                                             if (riskPercent < 30) return '#4caf50';      // Low risk - Green
-                                             else if (riskPercent < 60) return '#ff9800'; // Medium risk - Orange  
-                                             else if (riskPercent < 85) return '#f44336'; // High risk - Red
-                                             else return '#d32f2f';                       // Critical risk - Dark Red
-                                           })()
-                                         }}
-                                       />
-                                       <Typography variant="caption" color="text.secondary">
-                                         {(() => {
-                                           const riskPercent = round.projectedRisk * 100;
-                                           if (riskPercent < 30) return 'Low Risk';
-                                           else if (riskPercent < 60) return 'Medium Risk';
-                                           else if (riskPercent < 85) return 'High Risk';
-                                           else return 'Critical Risk';
-                                         })()}
-                                         </Typography>
-                                       </Box>
-                                       </Box>
-                                     </Box>
-                                <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-                                  Risk: {(round.currentRisk * 100).toFixed(0)}% → {(round.projectedRisk * 100).toFixed(0)}%
-                                     </Typography>
-                              </CardContent>
-                               </Card>
-                             ))}
-                           </Box>
-                      ) : (
-                        // Specific round details
-                        (() => {
-                          const currentRoundNumber = isUpdatingStrategy ? preservedRound : selectedRound;
-                          const round = riskMitigationStrategy.rounds.find(r => r.roundNumber === currentRoundNumber);
-                          if (!round) return null;
-
-                          return (
-                         <Box>
-                              <Typography variant="h6" gutterBottom>
-                                Round {round.roundNumber} - Implementation Details
-                           </Typography>
-                              
-                              {/* Round Stats */}
-                              <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-                                <Grid container spacing={2}>
-                                  <Grid item xs={6} sm={3}>
-                                    <Typography variant="body2" color="text.secondary">Risk Reduction</Typography>
-                                    <Typography variant="h6" color="success.main">
-                                      -{round.reductionPercentage.toFixed(1)}%
-                                    </Typography>
-                                  </Grid>
-                                  <Grid item xs={6} sm={3}>
-                                    <Typography variant="body2" color="text.secondary">Current Risk</Typography>
-                                    <Typography variant="h6">
-                                      {(round.currentRisk * 100).toFixed(0)}%
-                                    </Typography>
-                                  </Grid>
-                                  <Grid item xs={6} sm={3}>
-                                    <Typography variant="body2" color="text.secondary">Projected Risk</Typography>
-                                    <Typography variant="h6" color="primary.main">
-                                      {(round.projectedRisk * 100).toFixed(0)}%
-                                    </Typography>
-                                  </Grid>
-                                  <Grid item xs={6} sm={3}>
-                                    <Typography variant="body2" color="text.secondary">Focus Areas</Typography>
-                                    <Typography variant="h6">
-                                      {round.features.length}
-                                    </Typography>
-                                  </Grid>
-                                </Grid>
-                              </Paper>
-
-                              {/* Recommendations */}
-                              <Typography variant="subtitle1" gutterBottom>
-                                Recommended Changes
-                           </Typography>
-                           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                                {round.recommendations.map((rec, index) => {
-                                  const recommendationId = `${rec.featureGroup}-${rec.recommendedOption}`;
-                                  const persistentId = `${rec.featureGroup}-${rec.currentOption}-to-${rec.recommendedOption}`;
-                                  // Check if this recommendation was applied via user interaction only
-                                  const isApplied = appliedRecommendations.has(recommendationId) || 
-                                                  appliedRecommendations.has(persistentId);
-                                  
-                                  return (
-                                    <motion.div
-                                      key={index}
-                                      layout
-                                      initial={{ opacity: 0, y: 20 }}
-                                      animate={{ 
-                                        opacity: 1, 
-                                        y: 0,
-                                        scale: isApplied ? [1, 1.02, 1] : 1,
-                                      }}
-                                      transition={{ 
-                                        duration: 0.3,
-                                        delay: index * 0.1,
-                                        scale: { duration: 0.5, times: [0, 0.5, 1] }
-                                      }}
-                                    >
-                                                                             <Card 
-                                         variant="outlined" 
-                                         sx={{
-                                           position: 'relative',
-                                           overflow: 'hidden',
-                                           ...(isApplied && {
-                                   bgcolor: (theme) => theme.palette.mode === 'dark' 
-                                               ? 'rgba(76, 175, 80, 0.15)' 
-                                               : 'success.light',
-                                             borderColor: 'success.main',
-                                             boxShadow: (theme) => theme.palette.mode === 'dark'
-                                               ? '0 0 20px rgba(76, 175, 80, 0.4)'
-                                               : '0 0 20px rgba(76, 175, 80, 0.3)',
-                                             color: (theme) => theme.palette.mode === 'dark' 
-                                               ? 'success.light' 
-                                               : 'inherit',
-                                           })
-                                         }}
-                                      >
-                                                                                 {isApplied && (
-                                           <Box
-                                             sx={{
-                                               position: 'absolute',
-                                               top: 0,
-                                               left: 0,
-                                               right: 0,
-                                               height: 4,
-                                               bgcolor: 'success.main',
-                                               background: (theme) => theme.palette.mode === 'dark'
-                                                 ? 'linear-gradient(90deg, #66bb6a, #a5d6a7, #66bb6a)'
-                                                 : 'linear-gradient(90deg, #4caf50, #81c784, #4caf50)',
-                                               backgroundSize: '200% 100%',
-                                               animation: 'shimmer 2s infinite',
-                                               '@keyframes shimmer': {
-                                                 '0%': { backgroundPosition: '-200% 0' },
-                                                 '100%': { backgroundPosition: '200% 0' }
-                                               }
-                                             }}
-                                           />
-                                         )}
-                                        <CardContent>
-                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                                   <Box sx={{ flex: 1 }}>
-                                     <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                                            {rec.featureName}
-                                     </Typography>
-                                          <Typography 
-                                            variant="body2" 
-                                            sx={{ 
-                                              mb: 2,
-                                              color: isApplied 
-                                                ? (theme) => theme.palette.mode === 'dark' 
-                                                  ? 'rgba(255, 255, 255, 0.8)' 
-                                                  : 'text.secondary'
-                                                : 'text.secondary'
-                                            }}
-                                          >
-                                            {rec.description}
-                                          </Typography>
-                                        </Box>
-                                        {(() => {
-                                          const recommendationId = `${rec.featureGroup}-${rec.recommendedOption}`;
-                                          const persistentId = `${rec.featureGroup}-${rec.currentOption}-to-${rec.recommendedOption}`;
-                                          const isApplied = appliedRecommendations.has(recommendationId) || 
-                                                          appliedRecommendations.has(persistentId);
-                                          const isAlreadySet = rec.currentOption === rec.recommendedOption;
-                                          const isApplying = applyingRecommendation === recommendationId;
-                                          
-                                          return (
-                                            <Button
-                                              variant={isApplied ? "outlined" : isAlreadySet ? "outlined" : "contained"}
-                                              color={isApplied ? "success" : "primary"}
-                                              size="small"
-                                              onClick={() => !isApplied && !isAlreadySet && !isApplying && !isUpdatingStrategy && applyRecommendation(rec)}
-                                              disabled={isApplied || isAlreadySet || isApplying || isUpdatingStrategy}
-                                              sx={{ 
-                                                ml: 2, 
-                                                minWidth: 120,
-                                                transition: 'all 0.3s ease-in-out',
-                                                ...(isApplied && {
-                                                  bgcolor: (theme) => theme.palette.mode === 'dark' 
-                                                    ? 'rgba(76, 175, 80, 0.2)'
-                                                    : 'success.light',
-                                                  color: (theme) => theme.palette.mode === 'dark'
-                                                    ? 'success.light'
-                                                    : 'success.main',
-                                                  borderColor: 'success.main',
-                                                  '&:hover': {
-                                                    bgcolor: (theme) => theme.palette.mode === 'dark' 
-                                                      ? 'rgba(76, 175, 80, 0.25)'
-                                                      : 'success.light',
-                                                  }
-                                                }),
-                                                ...(isAlreadySet && !isApplied && {
-                                                  bgcolor: (theme) => theme.palette.mode === 'dark' 
-                                                    ? 'rgba(158, 158, 158, 0.12)'
-                                                    : 'grey.100',
-                                                  color: (theme) => theme.palette.mode === 'dark'
-                                                    ? 'grey.400'
-                                                    : 'grey.600',
-                                                  borderColor: (theme) => theme.palette.mode === 'dark'
-                                                    ? 'grey.700'
-                                                    : 'grey.300',
-                                                  '&:hover': {
-                                                    bgcolor: (theme) => theme.palette.mode === 'dark' 
-                                                      ? 'rgba(158, 158, 158, 0.15)'
-                                                      : 'grey.200',
-                                                  }
-                                                })
-                                              }}
-                                                                                             startIcon={
-                                                 isApplying ? (
-                                                   <PulsingLoader size={16} color="inherit" />
-                                                 ) : isApplied ? (
-                                                   <motion.div
-                                                     initial={{ rotate: 0, scale: 0 }}
-                                                     animate={{ rotate: 360, scale: 1 }}
-                                                     transition={{ 
-                                                       duration: 0.6, 
-                                                       type: "spring", 
-                                                       stiffness: 200,
-                                                       delay: 0.1 
-                                                     }}
-                                                   >
-                                                     <CheckIcon />
-                                                   </motion.div>
-                                                 ) : null
-                                               }
-                                            >
-                                              {isApplying ? (
-                                                <motion.div
-                                                  initial={{ opacity: 0 }}
-                                                  animate={{ opacity: 1 }}
-                                                  transition={{ duration: 0.2 }}
-                                                >
-                                                  Applying...
-                                                </motion.div>
-                                              ) : isApplied ? (
-                                                <motion.div
-                                                  initial={{ scale: 0.8, opacity: 0 }}
-                                                  animate={{ scale: 1, opacity: 1 }}
-                                                  transition={{ duration: 0.4, type: "spring", stiffness: 200 }}
-                                                >
-                                                  Applied
-                                                </motion.div>
-                                              ) : isAlreadySet ? (
-                                                "Already Set"
-                                              ) : (
-                                                "Apply Change"
-                                              )}
-                                            </Button>
-                                          );
-                                        })()}
-                                      </Box>
-                                      <Box sx={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                                       <Box>
-                                         <Typography variant="caption" color="text.secondary" display="block">
-                                           Current
-                                         </Typography>
-                                          <Typography variant="body2" fontWeight="medium">
-                                            {rec.currentOption}
-                                         </Typography>
-                                       </Box>
-                                        <Box sx={{ color: 'primary.main' }}>
-                                          →
-                                       </Box>
-                                       <Box>
-                                         <Typography variant="caption" color="text.secondary" display="block">
-                                           Recommended
-                                         </Typography>
-                                          <Typography variant="body2" color="primary.main" fontWeight="bold">
-                                            {rec.recommendedOption}
-                                         </Typography>
-                                       </Box>
-                                     </Box>
-                                        </CardContent>
-                               </Card>
-                                     </motion.div>
-                                   );
-                                 })}
-                           </Box>
-                         </Box>
-                          );
-                        })()
-                       )}
-
-                       <Button
-                         variant="outlined"
-                        onClick={analyzeRiskMitigation}
-                        disabled={isAnalyzingReductions}
-                        startIcon={isAnalyzingReductions ? <CircularProgress size={16} /> : null}
-                        sx={{ alignSelf: 'flex-start', mt: 3 }}
-                       >
-                         {isAnalyzingReductions ? 'Refreshing...' : 'Refresh Analysis'}
-                       </Button>
-                     </Box>
-                     </Box>
+                    <Box>
+                      <RiskMitigationSection
+                        strategy={riskMitigationStrategy}
+                        selectedRound={selectedRound}
+                        onRoundChange={setSelectedRound}
+                        appliedRecommendations={appliedRecommendations}
+                        applyingRecommendation={applyingRecommendation}
+                        onApplyRecommendation={applyRecommendation}
+                        onToggleRecommendation={toggleRecommendation}
+                        lockedRecommendations={lockedRecommendations}
+                        onToggleLock={toggleRecommendationLock}
+                        onAskChatbot={askChatAboutRecommendation}
+                        isUpdatingStrategy={isUpdatingStrategy}
+                        enhancedDescriptions={enhancedDescriptions}
+                        loadingRecommendations={loadingRecommendations}
+                      />
+                    </Box>
                   ) : (
                     <Alert severity="info" sx={{ mb: 2 }}>
                       <Typography variant="body2">
@@ -3793,104 +5450,127 @@ const RiskQuantification = () => {
                           </Typography>
                         </Box>
                         
-                        <List sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
+                        <Box sx={{ flexGrow: 1, overflow: 'auto', p: 2 }}>
                           {currentConversation?.messages.map((message) => (
-                            <ListItem
+                            <Box
                               key={message.id}
                               sx={{
+                                display: 'flex',
                                 flexDirection: message.sender === 'user' ? 'row-reverse' : 'row',
                                 alignItems: 'flex-start',
                                 mb: 2,
-                                px: 0,
+                                gap: 1,
+                                width: '100%'
                               }}
                             >
-                              <ListItemAvatar sx={{ minWidth: 48 }}>
                                 <Avatar sx={{ 
                                   bgcolor: message.sender === 'user' ? 'primary.main' : 'secondary.main',
                                   width: 36,
-                                  height: 36
+                                height: 36,
+                                flexShrink: 0
                                 }}>
                                   {message.sender === 'user' ? <PersonIcon /> : <SmartToyIcon />}
                                 </Avatar>
-                              </ListItemAvatar>
+                              
+                              <Box sx={{ 
+                                maxWidth: 'calc(100% - 50px)', // Account for avatar and gap
+                                minWidth: 0,
+                                width: 'fit-content'
+                              }}>
                                                              <Paper
-                                 elevation={1}
+                                  elevation={2}
                                  sx={{
-                                   p: 2,
-                                   maxWidth: '75%',
+                                    p: 1.5,
                                    bgcolor: message.sender === 'user' ? 'primary.light' : 'background.paper',
                                    border: message.sender === 'ai' ? 1 : 0,
                                    borderColor: message.sender === 'ai' ? 'divider' : 'transparent',
-                                   ml: message.sender === 'user' ? 0 : 1,
-                                   mr: message.sender === 'user' ? 1 : 0,
+                                    borderRadius: message.sender === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                    boxShadow: (theme) => theme.palette.mode === 'dark' 
+                                      ? '0 2px 8px rgba(0,0,0,0.3)' 
+                                      : '0 1px 3px rgba(0,0,0,0.1)',
                                  }}
                                >
                                  <Typography 
                                    variant="body2" 
+                                    component="div"
                                    sx={{ 
-                                     mb: 1,
                                      color: message.sender === 'user' ? 'white' : 'text.primary',
+                                      lineHeight: 1.4,
+                                      wordBreak: 'break-word',
+                                      whiteSpace: 'pre-wrap',
                                      '& strong': {
                                        fontWeight: 'bold',
                                        color: message.sender === 'user' ? 'white' : 'primary.main'
                                      },
                                      '& em': {
                                        fontStyle: 'italic'
-                                     },
-                                     whiteSpace: 'pre-wrap'
-                                   }}
-                                   dangerouslySetInnerHTML={{
-                                     __html: message.text
-                                       .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                       .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                                       .replace(/^[\s]*[-*]\s+/gm, '• ')
-                                       .replace(/^[\s]*(\d+)\.\s+/gm, '$1. ')
-                                   }}
-                                 />
+                                      }
+                                    }}
+                                  >
+                                    <MessageContent message={message} />
+                                  </Typography>
+                                  
                                  <Typography 
                                    variant="caption" 
                                    sx={{ 
-                                     color: message.sender === 'user' ? 'grey.300' : 'text.secondary',
-                                     fontSize: '0.7rem'
+                                      color: message.sender === 'user' ? 'rgba(255,255,255,0.7)' : 'text.secondary',
+                                      fontSize: '0.65rem',
+                                      mt: 0.5,
+                                      display: 'block',
+                                      textAlign: message.sender === 'user' ? 'right' : 'left'
                                    }}
                                  >
                                    {message.timestamp.toLocaleTimeString()}
                                  </Typography>
                                </Paper>
-                            </ListItem>
+                              </Box>
+                            </Box>
                           ))}
                           
                           {/* Typing Animation */}
                           {isAiTyping && (
-                            <ListItem
+                            <Box
                               sx={{
+                                display: 'flex',
                                 flexDirection: 'row',
                                 alignItems: 'flex-start',
                                 mb: 2,
-                                px: 0,
+                                gap: 1,
+                                width: '100%'
                               }}
                             >
-                              <ListItemAvatar sx={{ minWidth: 48 }}>
                                 <Avatar sx={{ 
                                   bgcolor: 'secondary.main',
                                   width: 36,
-                                  height: 36
+                                height: 36,
+                                flexShrink: 0
                                 }}>
                                   <SmartToyIcon />
                                 </Avatar>
-                              </ListItemAvatar>
+                              
+                              <Box sx={{ 
+                                maxWidth: 'calc(100% - 50px)',
+                                minWidth: 0,
+                                width: 'fit-content'
+                              }}>
                               <Paper
-                                elevation={1}
+                                  elevation={2}
                                 sx={{
-                                  p: 1,
+                                    p: 1.5,
                                   bgcolor: 'background.paper',
                                   border: 1,
                                   borderColor: 'divider',
-                                  ml: 1,
-                                  borderRadius: 2,
+                                    borderRadius: '18px 18px 18px 4px',
                                   display: 'flex',
                                   alignItems: 'center',
-                                  gap: 1
+                                    gap: 1,
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                    boxShadow: (theme) => theme.palette.mode === 'dark' 
+                                      ? '0 2px 8px rgba(0,0,0,0.3)' 
+                                      : '0 1px 3px rgba(0,0,0,0.1)',
                                 }}
                               >
                                 <TypingAnimation>
@@ -3902,9 +5582,10 @@ const RiskQuantification = () => {
                                   Dr. CyberBuild is thinking...
                                 </Typography>
                               </Paper>
-                            </ListItem>
+                              </Box>
+                            </Box>
                           )}
-                        </List>
+                        </Box>
 
                         <Divider />
                         
@@ -3935,61 +5616,341 @@ const RiskQuantification = () => {
 
                     {/* Chat Suggestions */}
                     <Box sx={{ flex: 1 }}>
-                      <Paper elevation={1} sx={{ p: 2, height: '500px', overflow: 'auto' }}>
-                        <Typography variant="subtitle1" gutterBottom>
-                          Quick Questions
+                      <Paper 
+                        elevation={1} 
+                        sx={{ 
+                          height: '500px', 
+                          overflow: 'hidden',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          position: 'relative',
+                          background: (theme) => theme.palette.mode === 'dark' 
+                            ? 'linear-gradient(135deg, rgba(35, 41, 70, 0.95) 0%, rgba(35, 41, 70, 0.85) 100%)'
+                            : 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(249, 250, 251, 0.95) 100%)',
+                          backdropFilter: 'blur(20px)',
+                          border: (theme) => theme.palette.mode === 'dark'
+                            ? '1px solid rgba(99, 102, 241, 0.2)'
+                            : '1px solid rgba(79, 70, 229, 0.1)',
+                        }}
+                      >
+                        {/* Header */}
+                        <Box sx={{ 
+                          p: 1.5, 
+                          borderBottom: 1, 
+                          borderColor: (theme) => theme.palette.mode === 'dark' 
+                            ? 'rgba(99, 102, 241, 0.2)'
+                            : 'rgba(79, 70, 229, 0.1)',
+                          background: (theme) => theme.palette.mode === 'dark'
+                            ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(6, 182, 212, 0.15) 100%)'
+                            : 'linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(6, 182, 212, 0.08) 100%)',
+                        }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Box sx={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: 1 
+                            }}>
+                              <motion.div
+                                animate={{ 
+                                  rotate: isLoadingQuestions ? 360 : 0,
+                                }}
+                                transition={{
+                                  duration: 2,
+                                  repeat: isLoadingQuestions ? Infinity : 0,
+                                  ease: "linear"
+                                }}
+                              >
+                                <SmartToyIcon 
+                                  sx={{ 
+                                    color: 'primary.main',
+                                    fontSize: 18
+                                  }} 
+                                />
+                              </motion.div>
+                              <Typography 
+                                variant="subtitle2" 
+                                sx={{ 
+                                  fontWeight: 600,
+                                  background: (theme) => theme.palette.mode === 'dark'
+                                    ? 'linear-gradient(135deg, #ffffff 0%, #e5e7eb 100%)'
+                                    : 'linear-gradient(135deg, #1e293b 0%, #475569 100%)',
+                                  backgroundClip: 'text',
+                                  WebkitBackgroundClip: 'text',
+                                  WebkitTextFillColor: 'transparent',
+                                }}
+                              >
+                                Recommended Questions
                         </Typography>
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                          Click any question to ask the AI assistant:
+                            </Box>
+                            {isLoadingQuestions && (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <CircularProgress 
+                                  size={14} 
+                                  sx={{ 
+                                    color: 'primary.main',
+                                    opacity: 0.8
+                                  }} 
+                                />
+                                <Typography 
+                                  variant="caption" 
+                                  sx={{ 
+                                    color: 'primary.main',
+                                    fontWeight: 500,
+                                    fontSize: '0.7rem'
+                                  }}
+                                >
+                                  Generating...
                         </Typography>
+                              </Box>
+                            )}
+                          </Box>
+                        </Box>
                         
-                        <List dense>
-                          {[
-                            'Analyze my construction project cyber risks',
-                            'What are the most critical vulnerabilities?',
-                            'How should I secure my project network?',
-                            'What vendor security requirements should I enforce?',
-                            'How can I protect BIM and project data?',
-                            'What incident response plan do I need?',
-                            'How do I secure construction site IoT devices?',
-                            'What compliance standards apply to my project?'
-                          ].map((question, index) => (
-                            <ListItem
-                              key={index}
-                              button
+                        {/* Questions List */}
+                        <Box sx={{ 
+                          flex: 1, 
+                          overflow: 'auto', 
+                          p: 1,
+                          '&::-webkit-scrollbar': {
+                            width: '6px',
+                          },
+                          '&::-webkit-scrollbar-track': {
+                            background: (theme) => theme.palette.mode === 'dark' 
+                              ? 'rgba(255, 255, 255, 0.05)'
+                              : 'rgba(0, 0, 0, 0.05)',
+                            borderRadius: '3px',
+                          },
+                          '&::-webkit-scrollbar-thumb': {
+                            background: (theme) => theme.palette.mode === 'dark'
+                              ? 'rgba(99, 102, 241, 0.3)'
+                              : 'rgba(79, 70, 229, 0.3)',
+                            borderRadius: '3px',
+                            '&:hover': {
+                              background: (theme) => theme.palette.mode === 'dark'
+                                ? 'rgba(99, 102, 241, 0.5)'
+                                : 'rgba(79, 70, 229, 0.5)',
+                            },
+                          },
+                        }}>
+                          <AnimatePresence mode="popLayout">
+                            {recommendedQuestions.map((question, index) => (
+                              <motion.div
+                                key={`${question}-${index}`}
+                                layout
+                                initial={{ 
+                                  opacity: 0, 
+                                  x: -30,
+                                  scale: 0.95
+                                }}
+                                animate={{ 
+                                  opacity: 1, 
+                                  x: 0,
+                                  scale: 1
+                                }}
+                                exit={{
+                                  opacity: 0,
+                                  x: 30,
+                                  scale: 0.95,
+                                  transition: { duration: 0.2 }
+                                }}
+                                transition={{
+                                  duration: 0.5,
+                                  delay: index * 0.08,
+                                  ease: [0.25, 0.46, 0.45, 0.94],
+                                  layout: { duration: 0.3 }
+                                }}
+                                whileHover={{
+                                  scale: 1.02,
+                                  transition: { duration: 0.2 }
+                                }}
+                                whileTap={{
+                                  scale: 0.98,
+                                  transition: { duration: 0.1 }
+                                }}
+                              >
+                                <Card
                               onClick={() => setChatInput(question)}
                               sx={{ 
-                                borderRadius: 1, 
-                                mb: 1,
-                                '&:hover': { bgcolor: 'action.hover' }
-                              }}
-                            >
-                              <ListItemText 
-                                primary={question}
-                                primaryTypographyProps={{ variant: 'body2' }}
-                              />
-                            </ListItem>
-                          ))}
-                        </List>
-
-                        <Divider sx={{ my: 2 }} />
+                                    mb: 0.8,
+                                    cursor: 'pointer',
+                                    position: 'relative',
+                                    overflow: 'hidden',
+                                    background: (theme) => theme.palette.mode === 'dark'
+                                      ? 'linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(51, 65, 85, 0.6) 100%)'
+                                      : 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%)',
+                                    border: (theme) => theme.palette.mode === 'dark'
+                                      ? '1px solid rgba(99, 102, 241, 0.2)'
+                                      : '1px solid rgba(79, 70, 229, 0.15)',
+                                    backdropFilter: 'blur(10px)',
+                                    transition: 'all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+                                    '&:hover': { 
+                                      background: (theme) => theme.palette.mode === 'dark'
+                                        ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(139, 92, 246, 0.25) 100%)'
+                                        : 'linear-gradient(135deg, rgba(79, 70, 229, 0.08) 0%, rgba(99, 102, 241, 0.08) 100%)',
+                                      borderColor: (theme) => theme.palette.mode === 'dark'
+                                        ? 'rgba(99, 102, 241, 0.4)'
+                                        : 'rgba(79, 70, 229, 0.3)',
+                                      transform: 'translateY(-2px)',
+                                      boxShadow: (theme) => theme.palette.mode === 'dark'
+                                        ? '0 8px 32px rgba(99, 102, 241, 0.3)'
+                                        : '0 8px 32px rgba(79, 70, 229, 0.15)',
+                                    },
+                                    '&:active': {
+                                      transform: 'translateY(0px)',
+                                    },
+                                    // Subtle gradient border effect
+                                    '&::before': {
+                                      content: '""',
+                                      position: 'absolute',
+                                      top: 0,
+                                      left: 0,
+                                      right: 0,
+                                      height: '2px',
+                                      background: (theme) => theme.palette.mode === 'dark'
+                                        ? 'linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.6), transparent)'
+                                        : 'linear-gradient(90deg, transparent, rgba(79, 70, 229, 0.4), transparent)',
+                                      opacity: 0,
+                                      transition: 'opacity 0.3s ease',
+                                    },
+                                    '&:hover::before': {
+                                      opacity: 1,
+                                    }
+                                  }}
+                                >
+                                  <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                                    <Box sx={{ 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      gap: 1.5,
+                                      width: '100%' 
+                                    }}>
+                                      <motion.div
+                                        initial={{ rotate: 0, scale: 1 }}
+                                        whileHover={{ rotate: 5, scale: 1.1 }}
+                                        transition={{ duration: 0.2 }}
+                                      >
+                                        <Box sx={{
+                                          width: 32,
+                                          height: 32,
+                                          borderRadius: '8px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: (theme) => theme.palette.mode === 'dark'
+                                            ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%)'
+                                            : 'linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%)',
+                                          border: (theme) => theme.palette.mode === 'dark'
+                                            ? '1px solid rgba(99, 102, 241, 0.3)'
+                                            : '1px solid rgba(79, 70, 229, 0.2)',
+                                        }}>
+                                          <ChatBubbleOutlineIcon 
+                                            sx={{ 
+                                              fontSize: 16,
+                                              color: 'primary.main',
+                                            }} 
+                                          />
+                                        </Box>
+                                      </motion.div>
+                                      
+                                      <Typography 
+                                        variant="body2"
+                                        sx={{ 
+                                          fontWeight: 500,
+                                          lineHeight: 1.4,
+                                          flex: 1,
+                                          color: (theme) => theme.palette.mode === 'dark'
+                                            ? 'rgba(255, 255, 255, 0.9)'
+                                            : 'text.primary',
+                                        }}
+                                      >
+                                        {question}
+                                      </Typography>
+                                      
+                                      <motion.div
+                                        initial={{ opacity: 0, x: -8 }}
+                                        whileHover={{ opacity: 1, x: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                      >
+                                        <Box sx={{
+                                          width: 24,
+                                          height: 24,
+                                          borderRadius: '6px',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          background: (theme) => theme.palette.mode === 'dark'
+                                            ? 'rgba(99, 102, 241, 0.2)'
+                                            : 'rgba(79, 70, 229, 0.1)',
+                                        }}>
+                                          <ArrowForwardIcon 
+                                            sx={{ 
+                                              fontSize: 14,
+                                              color: 'primary.main',
+                                            }} 
+                                          />
+                                        </Box>
+                                      </motion.div>
+                                    </Box>
+                                  </CardContent>
+                                </Card>
+                              </motion.div>
+                            ))}
+                                                    </AnimatePresence>
+                        </Box>
                         
-                        <Typography variant="subtitle2" gutterBottom>
-                          Risk Context
+                        {/* Risk Context Section */}
+                        <Box sx={{ 
+                          px: 1.5, 
+                          py: 1,
+                          borderTop: 1, 
+                          borderColor: (theme) => theme.palette.mode === 'dark' 
+                            ? 'rgba(99, 102, 241, 0.2)'
+                            : 'rgba(79, 70, 229, 0.1)',
+                          background: (theme) => theme.palette.mode === 'dark'
+                            ? 'linear-gradient(135deg, rgba(99, 102, 241, 0.05) 0%, rgba(6, 182, 212, 0.05) 100%)'
+                            : 'linear-gradient(135deg, rgba(79, 70, 229, 0.03) 0%, rgba(6, 182, 212, 0.03) 100%)',
+                        }}>
+                          <Typography variant="caption" sx={{ 
+                            fontWeight: 600,
+                            color: 'text.secondary',
+                            fontSize: '0.65rem',
+                            mb: 0.3,
+                            display: 'block'
+                          }}>
+                            🎯 Risk Context
                         </Typography>
-                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.3 }}>
                           {Object.entries(riskResults).map(([risk, analysis]) => (
-                            <Box
+                              <motion.div
                               key={risk}
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ duration: 0.2, delay: Object.keys(riskResults).indexOf(risk) * 0.05 }}
+                                whileHover={{ scale: 1.03 }}
+                                whileTap={{ scale: 0.97 }}
+                              >
+                                <Box
                               onClick={() => setChatInput(`Tell me more about my ${risk} risk score of ${analysis.score}%`)}
-                              sx={{ cursor: 'pointer' }}
+                                  sx={{ 
+                                    cursor: 'pointer',
+                                    '& .MuiChip-root': {
+                                      height: '18px',
+                                      fontSize: '0.6rem',
+                                      '& .MuiChip-label': {
+                                        px: 0.5,
+                                        py: 0
+                                      }
+                                    }
+                                  }}
                             >
                               <RiskContextBadge
                                 riskType={risk.replace(/([A-Z])/g, ' $1').trim()}
                                 score={analysis.score}
                             />
                             </Box>
+                              </motion.div>
                           ))}
+                          </Box>
                         </Box>
                       </Paper>
                     </Box>
@@ -4048,14 +6009,81 @@ const RiskQuantification = () => {
               </Button>
             </span>
           </Tooltip>
-          <Button
-            variant="contained"
-            startIcon={<SaveIcon />}
-            disabled
+          <Tooltip 
+            title={!isFormComplete() ? "Complete all required fields to save project" : "Save project to your account"}
+            arrow
           >
-            Save
-          </Button>
+            <span>
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSaveProject}
+                disabled={!isFormComplete()}
+              >
+                Save
+              </Button>
+            </span>
+          </Tooltip>
         </Box>
+
+        {/* Save Project Dialog */}
+        <Dialog open={saveDialogOpen} onClose={handleSaveCancel} maxWidth="sm" fullWidth>
+          <DialogTitle>Save Project</DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 1 }}>
+              <TextField
+                autoFocus
+                fullWidth
+                label="Project Name"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Enter a unique name for your project"
+                error={!!saveError}
+                helperText={saveError}
+                disabled={isSaving}
+              />
+              
+              {saveSuccess && (
+                <Alert severity="success" sx={{ mt: 2 }}>
+                  Project saved successfully! You can find it in the Reports section.
+                </Alert>
+              )}
+              
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  This will save:
+                </Typography>
+                <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+                  <Typography component="li" variant="body2" color="text.secondary">
+                    Project configuration and details
+                  </Typography>
+                  <Typography component="li" variant="body2" color="text.secondary">
+                    Risk analysis results
+                  </Typography>
+                  <Typography component="li" variant="body2" color="text.secondary">
+                    Risk mitigation strategies
+                  </Typography>
+                  <Typography component="li" variant="body2" color="text.secondary">
+                    All chatbot conversations
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleSaveCancel} disabled={isSaving}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSaveConfirm} 
+              variant="contained" 
+              disabled={isSaving || !projectName.trim()}
+              startIcon={isSaving ? <CircularProgress size={20} /> : <SaveIcon />}
+            >
+              {isSaving ? 'Saving...' : 'Save Project'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </motion.div>
     </Container>
   );

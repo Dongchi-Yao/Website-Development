@@ -27,9 +27,11 @@ import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { styled } from '@mui/material/styles';
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import ProfilePictureUpload from './ProfilePictureUpload';
 
 interface NavbarProps {
   onToggleColorMode: () => void;
@@ -56,6 +58,7 @@ const StyledLogo = styled('img')(({ theme }) => ({
 const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [profilePictureDialogOpen, setProfilePictureDialogOpen] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { isAuthenticated, user, logout } = useAuth();
@@ -74,6 +77,11 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
 
   const handleLogout = () => {
     logout();
+    handleUserMenuClose();
+  };
+
+  const handleProfilePictureClick = () => {
+    setProfilePictureDialogOpen(true);
     handleUserMenuClose();
   };
 
@@ -108,9 +116,7 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
         <>
           <ListItem>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1 }}>
-              <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-                {user?.name?.charAt(0).toUpperCase()}
-              </Avatar>
+              <ProfilePictureUpload size={32} showEditButton={false} />
               <Box>
                 <Typography variant="body2" fontWeight="medium">
                   {user?.name}
@@ -118,6 +124,11 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
                 <Typography variant="caption" color="text.secondary">
                   {user?.email}
                 </Typography>
+                {user?.role === 'manager' && user?.organization?.code && (
+                  <Typography variant="caption" color="primary">
+                    Org Code: {user.organization.code}
+                  </Typography>
+                )}
               </Box>
             </Box>
           </ListItem>
@@ -256,15 +267,9 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
                 {isAuthenticated ? (
                   <>
                     <Tooltip title="Account">
-                      <IconButton
-                        onClick={handleUserMenuClick}
-                        color="inherit"
-                        size="small"
-                      >
-                        <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}>
-                          {user?.name?.charAt(0).toUpperCase()}
-                        </Avatar>
-                      </IconButton>
+                      <Box onClick={handleUserMenuClick} sx={{ cursor: 'pointer' }}>
+                        <ProfilePictureUpload size={32} showEditButton={false} />
+                      </Box>
                     </Tooltip>
                     <Menu
                       anchorEl={anchorEl}
@@ -303,9 +308,18 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
                           <Typography variant="caption" color="text.secondary">
                             {user?.email}
                           </Typography>
+                          {user?.role === 'manager' && user?.organization?.code && (
+                            <Typography variant="caption" color="primary">
+                              Org Code: {user.organization.code}
+                            </Typography>
+                          )}
                         </Box>
                       </MenuItem>
                       <Divider />
+                      <MenuItem onClick={handleProfilePictureClick}>
+                        <PhotoCameraIcon sx={{ mr: 1 }} />
+                        Profile Picture
+                      </MenuItem>
                       <MenuItem onClick={handleLogout}>
                         <LogoutIcon sx={{ mr: 1 }} />
                         Logout
@@ -370,8 +384,19 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
       >
         {drawer}
       </Drawer>
+
+      {/* Standalone Profile Picture Upload Dialog */}
+      {profilePictureDialogOpen && (
+        <ProfilePictureUpload 
+          size={120} 
+          showEditButton={false}
+          showAvatar={false}
+          externalOpen={profilePictureDialogOpen}
+          onExternalClose={() => setProfilePictureDialogOpen(false)}
+        />
+      )}
     </>
   );
 };
 
-export default Navbar; 
+export default Navbar;

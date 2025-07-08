@@ -44,6 +44,15 @@ class MitigationRecommendation(BaseModel):
     recommendedOption: str
     optionIndex: int
     description: str
+    riskReduction: float = 0.0  # Individual recommendation risk reduction
+
+class RecommendationRiskReduction(BaseModel):
+    featureGroup: str
+    featureName: str
+    currentOption: str
+    recommendedOption: str
+    riskReduction: float
+    riskReductionPercentage: float
 
 class MitigationRound(BaseModel):
     roundNumber: int
@@ -74,20 +83,26 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 def load_model_and_data():
-    """Load the PyTorch model, data, and required files"""
+    """Load the PyTorch model and preprocessing data"""
     try:
-        # Set paths relative to script location
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        model_dir = os.path.join(script_dir, "..", "New models for the risk quant")
-        data_dir = os.path.join(model_dir, "files needed-do not change")
+        logger.debug("Starting model and data loading...")
+        
+        # Get the directory containing the model files
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Model files are in the backend python_service directory
+        data_dir = os.path.join(os.path.dirname(current_dir), "cyber-risk-dashboard", "backend", "python_service", "models")
         logger.debug(f"Data directory: {data_dir}")
         
-        # Load training data
-        df = pd.read_csv(os.path.join(data_dir, 'new_data.csv'))
-        logger.debug(f"Data loaded successfully. Shape: {df.shape}")
+        # Load reference data for preprocessing
+        df_path = os.path.join(data_dir, "new_data.csv")
+        logger.debug(f"Loading reference data from: {df_path}")
+        df = pd.read_csv(df_path)
+        logger.debug(f"Reference data loaded. Shape: {df.shape}")
         
         # Load group info
-        group_info_2 = torch.load(os.path.join(data_dir, "group_info_2.pth"))
+        group_info_path = os.path.join(data_dir, "group_info_2.pth")
+        logger.debug(f"Loading group info from: {group_info_path}")
+        group_info_2 = torch.load(group_info_path, map_location=torch.device('cpu'))
         logger.debug("Group info loaded successfully")
         
         # Import model definition
@@ -118,22 +133,82 @@ def load_model_and_data():
         model.eval()
         logger.debug("Model weights loaded successfully")
         
-        return model, df, group_info_2
+        # Create synthetic X_train for SHAP analysis
+        logger.debug("Creating synthetic X_train for SHAP analysis...")
+        X_train = create_synthetic_training_data(df, group_info_2)
+        logger.debug(f"Synthetic X_train created. Shape: {X_train.shape}")
+        
+        return model, df, group_info_2, X_train
     except Exception as e:
         logger.error(f"Error loading model and data: {str(e)}", exc_info=True)
-        return None, None, None
+        return None, None, None, None
+
+def create_synthetic_training_data(df: pd.DataFrame, group_info: dict) -> torch.Tensor:
+    """Create synthetic training data for SHAP analysis"""
+    try:
+        # Get feature columns (all except last 5 columns)
+        feature_cols = df.columns[:-5]
+        
+        # Create synthetic samples by varying the original data
+        synthetic_samples = []
+        
+        # Use original data as base
+        for _, row in df.head(100).iterrows():  # Use first 100 samples as base
+            # Get the feature values
+            feature_values = row[feature_cols].astype(str).tolist()
+            
+            # Create variations of this sample
+            for variation in range(5):  # Create 5 variations per sample
+                # Randomly modify some features
+                modified_values = feature_values.copy()
+                for i in range(len(modified_values)):
+                    if np.random.random() < 0.3:  # 30% chance to modify each feature
+                        # Get possible values for this feature
+                        possible_values = df[feature_cols[i]].astype(str).unique()
+                        modified_values[i] = np.random.choice(possible_values)
+                
+                synthetic_samples.append(modified_values)
+        
+        # Create one-hot encoding for all synthetic samples
+        synthetic_df = pd.DataFrame(synthetic_samples, columns=feature_cols)
+        
+        # Combine with original data for one-hot encoding
+        all_feat = df.iloc[:, :-5].astype(str)
+        combined = pd.concat([all_feat, synthetic_df], ignore_index=True)
+        
+        # Create one-hot encoding
+        df_hot = pd.get_dummies(combined)
+        df_hot["1.5_4"] = False
+        df_hot = df_hot.reindex(sorted(df_hot.columns), axis=1)
+        
+        # Get only the synthetic samples (after the original data)
+        synthetic_hot = df_hot.iloc[len(df):].reset_index(drop=True)
+        
+        # Convert to tensor
+        X_train = torch.tensor(synthetic_hot.values.astype(int), dtype=torch.float)
+        
+        logger.debug(f"Created synthetic X_train with {len(synthetic_samples)} samples")
+        return X_train
+        
+    except Exception as e:
+        logger.error(f"Error creating synthetic training data: {str(e)}")
+        # Fallback: create simple random data
+        logger.warning("Using fallback random training data")
+        num_samples = 200
+        num_features = sum(len(cols) for cols in group_info.values())
+        return torch.randint(0, 2, (num_samples, num_features), dtype=torch.float)
 
 # Load model and data at startup
 logger.info("Loading model and data...")
-model, df, group_info_2 = load_model_and_data()
+model, df, group_info_2, X_train = load_model_and_data()
 logger.info("Model and data loading completed")
 
 # Initialize risk mitigation analyzer
 mitigation_analyzer = None
 if model is not None and df is not None and group_info_2 is not None:
     try:
-        mitigation_analyzer = RiskMitigationAnalyzer(model, df, group_info_2)
-        logger.info("Risk mitigation analyzer initialized successfully")
+        mitigation_analyzer = RiskMitigationAnalyzer(model, df, group_info_2, X_train)
+        logger.info("Risk mitigation analyzer initialized successfully with SHAP support")
     except Exception as e:
         logger.error(f"Failed to initialize risk mitigation analyzer: {str(e)}")
         mitigation_analyzer = None
@@ -224,6 +299,45 @@ async def predict_risks(input_data: RiskInput) -> RiskOutput:
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+class RecommendationRiskReductionRequest(BaseModel):
+    user_data: List[int]
+    featureGroup: str
+    featureName: str
+    currentOption: str
+    recommendedOption: str
+
+@app.post("/recommendation-risk-reduction")
+async def calculate_recommendation_risk_reduction(request: RecommendationRiskReductionRequest) -> RecommendationRiskReduction:
+    """Calculate risk reduction for a specific recommendation"""
+    logger.debug(f"Received recommendation risk reduction request: {request}")
+    
+    if mitigation_analyzer is None:
+        logger.error("Mitigation analyzer not initialized")
+        raise HTTPException(status_code=500, detail="Mitigation analyzer not initialized")
+    
+    try:
+        # Calculate risk reduction for the specific recommendation
+        risk_reduction_data = mitigation_analyzer.calculate_single_recommendation_risk_reduction(
+            request.user_data,
+            request.featureGroup,
+            request.featureName,
+            request.currentOption,
+            request.recommendedOption
+        )
+        
+        return RecommendationRiskReduction(
+            featureGroup=request.featureGroup,
+            featureName=request.featureName,
+            currentOption=request.currentOption,
+            recommendedOption=request.recommendedOption,
+            riskReduction=risk_reduction_data['riskReduction'],
+            riskReductionPercentage=risk_reduction_data['riskReductionPercentage']
+        )
+        
+    except Exception as e:
+        logger.error(f"Recommendation risk reduction calculation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Recommendation risk reduction calculation error: {str(e)}")
 
 @app.post("/mitigation-strategy")
 async def generate_mitigation_strategy(input_data: RiskInput) -> MitigationStrategy:

@@ -1,10 +1,21 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 
+interface Organization {
+  _id: string;
+  name: string;
+  code: string;
+  manager: string;
+  members: string[];
+}
+
 interface User {
   _id: string;
   name: string;
   email: string;
   role: string;
+  organization?: Organization;
+  profilePicture?: string;
+  isEmailVerified?: boolean;
 }
 
 interface AuthState {
@@ -16,10 +27,25 @@ interface AuthState {
 
 interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, email: string, password: string) => Promise<void>;
+  register: (
+    name: string, 
+    email: string, 
+    password: string,
+    organizationAction: 'create' | 'join',
+    organizationName?: string,
+    organizationCode?: string
+  ) => Promise<{ user: User; token: string; organization?: Organization }>;
+  verifyEmail: (email: string, otp: string) => Promise<void>;
+  resendVerification: (email: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<void>;
+  resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
   logout: () => void;
   clearError: () => void;
   error: string | null;
+  isAdmin: () => boolean;
+  isManager: () => boolean;
+  uploadProfilePicture: (file: File) => Promise<void>;
+  deleteProfilePicture: () => Promise<void>;
 }
 
 type AuthAction =
@@ -28,7 +54,8 @@ type AuthAction =
   | { type: 'AUTH_FAILURE'; payload: string }
   | { type: 'AUTH_LOGOUT' }
   | { type: 'CLEAR_ERROR' }
-  | { type: 'SET_LOADING'; payload: boolean };
+  | { type: 'SET_LOADING'; payload: boolean }
+  | { type: 'UPDATE_USER'; payload: User };
 
 const initialState: AuthState = {
   user: null,
@@ -76,6 +103,11 @@ const authReducer = (state: AuthState, action: AuthAction): AuthState => {
       return {
         ...state,
         isLoading: action.payload,
+      };
+    case 'UPDATE_USER':
+      return {
+        ...state,
+        user: action.payload,
       };
     default:
       return state;
@@ -138,7 +170,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     try {
       dispatch({ type: 'AUTH_START' });
-      setError(null);
 
       const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: 'POST',
@@ -151,6 +182,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const data = await response.json();
 
       if (response.ok) {
+        // Clear error on successful login
+        setError(null);
         localStorage.setItem('token', data.token);
         dispatch({
           type: 'AUTH_SUCCESS',
@@ -160,6 +193,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               name: data.name,
               email: data.email,
               role: data.role,
+              organization: data.organization,
+              profilePicture: data.profilePicture,
+              isEmailVerified: data.isEmailVerified,
             },
             token: data.token,
           },
@@ -175,7 +211,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (name: string, email: string, password: string) => {
+  const register = async (
+    name: string, 
+    email: string, 
+    password: string,
+    organizationAction: 'create' | 'join',
+    organizationName?: string,
+    organizationCode?: string
+  ) => {
     try {
       dispatch({ type: 'AUTH_START' });
       setError(null);
@@ -185,25 +228,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({ 
+          name, 
+          email, 
+          password,
+          organizationAction,
+          organizationName,
+          organizationCode
+        }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        localStorage.setItem('token', data.token);
-        dispatch({
-          type: 'AUTH_SUCCESS',
-          payload: {
-            user: {
-              _id: data._id,
-              name: data.name,
-              email: data.email,
-              role: data.role,
-            },
-            token: data.token,
-          },
-        });
+        // Don't store token or log in the user automatically
+        // Just return the data for the component to handle
+        dispatch({ type: 'AUTH_LOGOUT' }); // Reset loading state without logging in
+        return data; // Return the full response including organization
       } else {
         throw new Error(data.message || 'Registration failed');
       }
@@ -211,6 +252,110 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const errorMessage = error instanceof Error ? error.message : 'An error occurred during registration';
       setError(errorMessage);
       dispatch({ type: 'AUTH_FAILURE', payload: errorMessage });
+      throw error;
+    }
+  };
+
+  const verifyEmail = async (email: string, otp: string) => {
+    try {
+      setError(null);
+
+      const response = await fetch(`${API_BASE_URL}/auth/verify-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, otp }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Update user's email verification status
+        if (state.user && state.user.email === email) {
+          dispatch({
+            type: 'UPDATE_USER',
+            payload: { ...state.user, isEmailVerified: true }
+          });
+        }
+      } else {
+        throw new Error(data.message || 'Email verification failed');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred during email verification';
+      setError(errorMessage);
+      throw error;
+    }
+  };
+
+  const resendVerification = async (email: string) => {
+    try {
+      setError(null);
+
+      const response = await fetch(`${API_BASE_URL}/auth/resend-verification`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to resend verification');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while resending verification';
+      setError(errorMessage);
+      throw error;
+    }
+  };
+
+  const forgotPassword = async (email: string) => {
+    try {
+      setError(null);
+
+      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to send password reset email');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while sending password reset email';
+      setError(errorMessage);
+      throw error;
+    }
+  };
+
+  const resetPassword = async (email: string, otp: string, newPassword: string) => {
+    try {
+      setError(null);
+
+      const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, otp, newPassword }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to reset password');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while resetting password';
+      setError(errorMessage);
       throw error;
     }
   };
@@ -225,14 +370,92 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setError(null);
   };
 
+  const isAdmin = () => {
+    return state.user?.role === 'admin';
+  };
+
+  const isManager = () => {
+    return state.user?.role === 'manager' || state.user?.role === 'admin';
+  };
+
+  const uploadProfilePicture = async (file: File) => {
+    try {
+      const formData = new FormData();
+      formData.append('profilePicture', file);
+
+      const response = await fetch(`${API_BASE_URL}/auth/upload-profile-picture`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${state.token}`,
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        dispatch({
+          type: 'AUTH_SUCCESS',
+          payload: {
+            user: data.user,
+            token: state.token!,
+          },
+        });
+      } else {
+        throw new Error(data.message || 'Failed to upload profile picture');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+      setError(errorMessage);
+      throw error;
+    }
+  };
+
+  const deleteProfilePicture = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/auth/delete-profile-picture`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${state.token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        dispatch({
+          type: 'AUTH_SUCCESS',
+          payload: {
+            user: data.user,
+            token: state.token!,
+          },
+        });
+      } else {
+        throw new Error(data.message || 'Failed to delete profile picture');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+      setError(errorMessage);
+      throw error;
+    }
+  };
+
   const value: AuthContextType = {
     ...state,
     login,
     register,
+    verifyEmail,
+    resendVerification,
+    forgotPassword,
+    resetPassword,
     logout,
     clearError,
     error,
+    isAdmin,
+    isManager,
+    uploadProfilePicture,
+    deleteProfilePicture,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
-}; 
+};

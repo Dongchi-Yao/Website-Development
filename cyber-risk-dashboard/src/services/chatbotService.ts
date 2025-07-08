@@ -123,13 +123,28 @@ const SYSTEM_INSTRUCTIONS = `You are Dr. CyberBuild, a world-renowned expert in 
 5. **Stakeholder Impact**: Address concerns of different project stakeholders
 6. **Compliance Alignment**: Ensure recommendations align with industry standards
 
-**RESPONSE FORMAT:**
-- Use **bold** for key concepts and critical points
-- Use bullet points for lists and recommendations
-- Include specific metrics and benchmarks when available
-- Provide both immediate and long-term recommendations
-- Reference industry best practices and standards
-- Maintain professional yet accessible tone
+**STRICT RESPONSE FORMAT REQUIREMENTS:**
+- Use **bold text** for key concepts, critical points, and section headers
+- Use bullet points (•) for lists and recommendations - start each point with a dash (-)
+- Use numbered lists (1., 2., 3.) for sequential steps or prioritized items
+- Keep paragraphs concise (2-4 sentences max)
+- Use single line breaks between bullet points
+- Use double line breaks between major sections
+- Include specific metrics and percentages when available
+- End urgent recommendations with asterisks (*IMMEDIATE ACTION REQUIRED*)
+- Use professional yet accessible tone without jargon overload
+
+**FORMAT EXAMPLE:**
+**Risk Assessment Summary:**
+
+- **High Priority:** Implement network segmentation (*IMMEDIATE ACTION REQUIRED*)
+- **Medium Priority:** Deploy endpoint detection and response tools
+- **Low Priority:** Enhance security awareness training
+
+**Implementation Timeline:**
+1. Week 1-2: Network assessment and planning
+2. Week 3-4: Security tool deployment
+3. Month 2-3: Staff training and monitoring setup
 
 **SPECIALIZED KNOWLEDGE AREAS:**
 - Project management software security (Procore, Autodesk, etc.)
@@ -170,6 +185,37 @@ class ChatbotService {
     });
   }
 
+  private async retryWithExponentialBackoff<T>(
+    operation: () => Promise<T>,
+    maxRetries: number = 3,
+    initialDelay: number = 1000
+  ): Promise<T> {
+    let retryCount = 0;
+    let delay = initialDelay;
+
+    while (true) {
+      try {
+        return await operation();
+      } catch (error) {
+        retryCount++;
+        
+        // If we've exceeded max retries or it's not a 503 error, throw
+        if (retryCount > maxRetries || !(error instanceof Error && error.toString().includes('503'))) {
+          throw error;
+        }
+
+        // Log retry attempt
+        console.log(`Attempt ${retryCount} failed, retrying in ${delay}ms...`);
+        
+        // Wait for the delay period
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // Exponential backoff - double the delay for next attempt
+        delay *= 2;
+      }
+    }
+  }
+
   async initialize(
     projectInfo?: ProjectInfo, 
     riskResults?: RiskResults, 
@@ -198,8 +244,11 @@ class ChatbotService {
       
       console.log('🤖 Context prompt being sent:', contextPrompt.substring(0, 500) + '...');
       
-      // Initialize with context
-      await this.chat.sendMessage(contextPrompt);
+      // Initialize with context using retry mechanism
+      await this.retryWithExponentialBackoff(async () => {
+        await this.chat.sendMessage(contextPrompt);
+      });
+      
       return true;
     } catch (error) {
       console.error("Error initializing chatbot:", error);
@@ -345,7 +394,7 @@ Use this comprehensive data to provide expert insights:
 - **Phased Approach**: ${strategy.rounds.length} implementation rounds (ordered by impact and feasibility)
 
 **Round-by-Round Implementation Plan:**
-*Each round focuses on specific security domains with quantified risk reduction projections. Rounds are ordered by maximum impact and practical implementation considerations.*
+*The AI algorithm generates five strategic implementation rounds using advanced risk factor analysis. In each round, the system identifies the next uncontrolled, highest-contributing risk factor from each security group. By systematically addressing the most impactful factors from each category and assigning them to sequential rounds, significant overall risk reduction is achieved after implementing just one or two rounds. This approach maximizes risk reduction efficiency while maintaining practical implementation feasibility.*
 `;
       strategy.rounds.forEach(round => {
         prompt += `
@@ -362,10 +411,12 @@ Use this comprehensive data to provide expert insights:
       
       prompt += `
 **IMPLEMENTATION GUIDANCE:**
-- Each recommendation includes current state, recommended change, and rationale
-- Risk reduction percentages are based on machine learning analysis of similar projects
-- Rounds can be implemented sequentially or in parallel based on resource availability
-- Progress tracking shows real-time risk reduction as changes are applied
+- The algorithm systematically identifies the highest-contributing risk factors from each security group per round
+- Risk reduction percentages are based on machine learning analysis of factor impact and similar projects
+- Rounds are ordered by maximum impact potential - early rounds typically achieve the most significant risk reduction
+- Each recommendation includes current state, recommended change, and rationale based on risk factor analysis
+- Progress tracking shows real-time risk reduction as the most impactful changes are applied
+- The system ensures overall risk reduction is maximized with minimal implementation effort
 `;
     }
 
@@ -579,10 +630,15 @@ How can I help you enhance this project's cybersecurity posture?`;
         }
       }
 
-      // Send message and get response
-      const result = await this.chat.sendMessage(message);
-      const response = await result.response;
-      return response.text();
+      // Send message and get response with retry mechanism
+      const rawResponse = await this.retryWithExponentialBackoff(async () => {
+        const result = await this.chat.sendMessage(message);
+        const response = await result.response;
+        return response.text();
+      });
+      
+      // Format the response before returning
+      return this.formatResponse(rawResponse);
     } catch (error) {
       console.error("Error sending message:", error);
       throw error;
@@ -593,24 +649,48 @@ How can I help you enhance this project's cybersecurity posture?`;
     // Handle markdown-style formatting for Material-UI display
     let formatted = text;
 
+    // First, normalize line endings
+    formatted = formatted.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
     // Convert **bold** to HTML-like formatting that can be handled by the UI
     formatted = formatted.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     
-    // Convert *italic* to emphasis
-    formatted = formatted.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    // Convert *italic* to emphasis (but avoid affecting *IMMEDIATE ACTION REQUIRED* style)
+    formatted = formatted.replace(/\*([^*\n]+?)\*/g, (match, p1) => {
+      if (p1.includes('IMMEDIATE') || p1.includes('URGENT') || p1.includes('CRITICAL')) {
+        return match; // Keep urgency markers as is
+      }
+      return `<em>${p1}</em>`;
+    });
     
     // Handle bullet points - convert - or * at start of line to proper bullets
-    formatted = formatted.replace(/^[\s]*[-*]\s+/gm, '• ');
+    formatted = formatted.replace(/^[\s]*[-•]\s+/gm, '• ');
     
-    // Handle numbered lists
+    // Handle numbered lists - ensure proper spacing
     formatted = formatted.replace(/^[\s]*(\d+)\.\s+/gm, '$1. ');
     
-    // Ensure proper line breaks for paragraphs
-    formatted = formatted.replace(/\n\n/g, '\n\n');
-    
     // Handle section headers (lines that end with :)
-    formatted = formatted.replace(/^([A-Z][A-Z\s]+):$/gm, '<strong>$1:</strong>');
+    formatted = formatted.replace(/^([A-Z][A-Z\s/&-]+):[\s]*$/gm, '<strong>$1:</strong>');
     
+    // Handle mixed case section headers
+    formatted = formatted.replace(/^([A-Z][a-zA-Z\s/&-]+):[\s]*$/gm, '<strong>$1:</strong>');
+    
+    // Clean up multiple consecutive spaces
+    formatted = formatted.replace(/[ \t]+/g, ' ');
+    
+    // Ensure proper paragraph spacing - double line breaks
+    formatted = formatted.replace(/\n\n+/g, '\n\n');
+    
+    // Clean up spacing around bullet points
+    formatted = formatted.replace(/\n•/g, '\n• ');
+    
+    // Ensure there's proper spacing after numbered items
+    formatted = formatted.replace(/(\d+\.\s+)/g, '$1');
+    
+    // Handle urgent action markers - make them stand out
+    formatted = formatted.replace(/\*([^*]*(?:IMMEDIATE|URGENT|CRITICAL)[^*]*)\*/g, '<strong style="color: #d32f2f;">*$1*</strong>');
+    
+    // Clean up any trailing/leading whitespace
     return formatted.trim();
   }
 
@@ -670,7 +750,7 @@ How can I help you enhance this project's cybersecurity posture?`;
       lastUpdate: this.currentContext.lastUpdate
     });
 
-    // Send context update to the chat
+    // Send context update to the chat with retry mechanism
     try {
       let updatePrompt = '**CONTEXT UPDATE**\n\n';
       
@@ -682,7 +762,9 @@ How can I help you enhance this project's cybersecurity posture?`;
       updatePrompt += this.buildContextPrompt();
       updatePrompt += '\n\nPlease acknowledge this update and incorporate the new information into your analysis.';
 
-      await this.chat.sendMessage(updatePrompt);
+      await this.retryWithExponentialBackoff(async () => {
+        await this.chat.sendMessage(updatePrompt);
+      });
       return true;
     } catch (error) {
       console.error("Error updating context:", error);
@@ -692,6 +774,58 @@ How can I help you enhance this project's cybersecurity posture?`;
 
   getFormattedContext(): string {
     return this.buildContextPrompt();
+  }
+
+  async generateFollowUpQuestions(conversationHistory: Array<{ text: string; sender: 'user' | 'ai' }>): Promise<string[]> {
+    try {
+      // Build context about the conversation so far
+      const recentMessages = conversationHistory.slice(-5); // Get last 5 messages for context
+      const conversationSummary = recentMessages
+        .map(msg => `${msg.sender === 'user' ? 'User' : 'AI'}: ${msg.text}`)
+        .join('\n');
+
+      const followUpPrompt = `Based on our recent conversation about construction cybersecurity, generate 3-4 intelligent follow-up questions that would help the user:
+
+1. Dive deeper into specific risk areas discussed
+2. Get practical implementation advice
+3. Understand the business impact of recommendations
+4. Explore related cybersecurity concerns in construction
+
+Recent conversation context:
+${conversationSummary}
+
+Current project context:
+${this.buildContextPrompt()}
+
+Generate concise, actionable questions (one per line) that would naturally continue our cybersecurity discussion. Focus on practical concerns a construction project manager might have. Each question should be 8-15 words long.
+
+Format: Return only the questions, one per line, without numbers or bullets.`;
+
+      // Send the prompt and get response
+      const result = await this.retryWithExponentialBackoff(async () => {
+        const response = await this.model.generateContent(followUpPrompt);
+        return response.response.text();
+      });
+
+      // Parse the response into individual questions
+      const questions = result
+        .split('\n')
+        .map(q => q.trim())
+        .filter(q => q.length > 0 && !q.match(/^\d+\.|\*|\-/)) // Remove numbered/bulleted items
+        .filter(q => q.endsWith('?')) // Only keep actual questions
+        .slice(0, 4); // Limit to 4 questions max
+
+      return questions;
+    } catch (error) {
+      console.error("Error generating follow-up questions:", error);
+      // Return some default questions if the API fails
+      return [
+        "What are the most cost-effective security measures for my project type?",
+        "How can I improve my team's cybersecurity awareness?",
+        "What vendor security requirements should I implement?",
+        "How do I measure the success of these security recommendations?"
+      ];
+    }
   }
 }
 

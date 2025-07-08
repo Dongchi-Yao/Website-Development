@@ -1,13 +1,23 @@
+from typing import List, Dict, Any
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import torch
 import pandas as pd
 import numpy as np
 import json
 import os
-from typing import List, Dict
 
 app = FastAPI(title="Risk Quantification Service", version="1.0.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Pydantic models for request/response
 class RiskInput(BaseModel):
@@ -19,11 +29,6 @@ class RiskInput(BaseModel):
     layer1_teams: str
     layer2_teams: str
     layer3_teams: str
-    layer4_teams: str
-    layer5_teams: str
-    layer6_teams: str
-    layer7_teams: str
-    layer8_teams: str
     team_overlap: str
     has_it_team: str
     devices_with_firewall: str
@@ -34,11 +39,14 @@ class RiskInput(BaseModel):
     uses_mfa: str
 
 class RiskOutput(BaseModel):
-    ransomware: Dict[str, any]
-    phishing: Dict[str, any]
-    data_breach: Dict[str, any]
-    insider_attack: Dict[str, any]
-    supply_chain: Dict[str, any]
+    ransomware: Dict[str, Any]
+    phishing: Dict[str, Any]
+    data_breach: Dict[str, Any]
+    insider_attack: Dict[str, Any]
+    supply_chain: Dict[str, Any]
+
+class UserDataInput(BaseModel):
+    user_data: List[int]
 
 # Global variables for model and preprocessing
 model_ft = None
@@ -249,7 +257,7 @@ async def health_check():
 
 @app.post("/predict", response_model=RiskOutput)
 async def predict_risk(risk_input: RiskInput):
-    """Main prediction endpoint"""
+    """Main prediction endpoint with structured input"""
     try:
         if model_ft is None:
             raise HTTPException(status_code=500, detail="Model not loaded")
@@ -285,6 +293,35 @@ async def predict_risk(risk_input: RiskInput):
             }
         
         return RiskOutput(**results)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+@app.post("/predict-simple", response_model=Dict[str, Any])
+async def predict_risk_simple(user_data_input: UserDataInput):
+    """Simple prediction endpoint that accepts array input"""
+    try:
+        if model_ft is None:
+            raise HTTPException(status_code=500, detail="Model not loaded")
+        
+        # Validate input array
+        if len(user_data_input.user_data) != 16:
+            raise HTTPException(status_code=400, detail="Expected 16 input values")
+        
+        # Convert to tensor
+        user_data = user_data_input.user_data
+        sample_tensor = preprocess_input(user_data)
+        
+        # Make prediction
+        with torch.no_grad():
+            logits = model_ft(sample_tensor)
+            probs = torch.sigmoid(logits)
+        
+        # Convert to numpy for easier handling
+        probs_np = probs.numpy()[0]
+        
+        # Return probabilities array as expected by frontend
+        return {"probabilities": probs_np.tolist()}
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")

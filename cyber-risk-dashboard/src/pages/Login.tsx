@@ -14,6 +14,8 @@ import {
 import { motion } from 'framer-motion';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { isValidEmail } from '../utils/validation';
+import ForgotPassword from '../components/ForgotPassword';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -21,10 +23,13 @@ const Login = () => {
   const { login, isLoading, isAuthenticated, error, clearError } = useAuth();
   
   const [formData, setFormData] = useState({
-    email: '',
+    email: location.state?.email || '',
     password: '',
   });
+  const [localError, setLocalError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -34,10 +39,13 @@ const Login = () => {
     }
   }, [isAuthenticated, navigate, location]);
 
-  // Clear errors when component mounts
+  // Clear location state after displaying message
   useEffect(() => {
-    clearError();
-  }, [clearError]);
+    if (location.state?.message) {
+      // Clear the location state to prevent message from showing again on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state?.message, location.pathname, navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -45,14 +53,40 @@ const Login = () => {
       ...prev,
       [name]: value
     }));
-    // Clear errors when user starts typing
-    if (error) {
-      clearError();
+    // Only clear local validation errors when user starts typing
+    if (localError) {
+      setLocalError('');
     }
+  };
+
+  const validateForm = () => {
+    if (!formData.email.trim()) {
+      setLocalError('Email is required');
+      return false;
+    }
+    if (!isValidEmail(formData.email)) {
+      setLocalError('Please enter a valid email address');
+      return false;
+    }
+    if (!formData.password.trim()) {
+      setLocalError('Password is required');
+      return false;
+    }
+    return true;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Clear local validation errors
+    setLocalError('');
+    
+    if (!validateForm()) {
+      return;
+    }
+    
+    // Clear auth errors only when we're about to make the API call
+    clearError();
     
     try {
       await login(formData.email, formData.password);
@@ -80,6 +114,16 @@ const Login = () => {
           </Typography>
 
           <Box component="form" onSubmit={handleSubmit} sx={{ mt: 3 }}>
+            {successMessage && (
+              <Alert 
+                severity="success" 
+                sx={{ mb: 2 }}
+                onClose={() => setSuccessMessage('')}
+              >
+                {successMessage}
+              </Alert>
+            )}
+            
             <TextField
               margin="normal"
               required
@@ -91,6 +135,8 @@ const Login = () => {
               autoFocus
               value={formData.email}
               onChange={handleChange}
+              error={!!(localError && localError.includes('email'))}
+              helperText={localError && localError.includes('email') ? localError : ''}
             />
             <TextField
               margin="normal"
@@ -105,9 +151,16 @@ const Login = () => {
               onChange={handleChange}
             />
             
-            {error && (
-              <Alert severity="error" sx={{ mt: 2 }}>
-                {error}
+            {(error || localError) && (
+              <Alert 
+                severity="error" 
+                sx={{ mt: 2 }}
+                onClose={() => {
+                  if (error) clearError();
+                  if (localError) setLocalError('');
+                }}
+              >
+                {error || localError}
               </Alert>
             )}
 
@@ -131,12 +184,18 @@ const Login = () => {
               >
                 Don't have an account? Sign Up
               </Link>
+              <br />
               <Link
                 component="button"
                 variant="body2"
-                onClick={() => {/* TODO: Implement forgot password */}}
+                onClick={() => {
+                  clearError();
+                  setLocalError('');
+                  setShowForgotPassword(true);
+                }}
+                sx={{ mt: 1 }}
               >
-                Forgot password?
+                Forgot Password?
               </Link>
             </Box>
           </Box>
@@ -147,6 +206,11 @@ const Login = () => {
           autoHideDuration={3000}
           onClose={() => setShowSuccess(false)}
           message="Login successful! Redirecting..."
+        />
+
+        <ForgotPassword
+          open={showForgotPassword}
+          onClose={() => setShowForgotPassword(false)}
         />
       </motion.div>
     </Container>

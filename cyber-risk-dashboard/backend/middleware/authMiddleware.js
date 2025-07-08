@@ -12,8 +12,8 @@ export const protect = async (req, res, next) => {
       // Verify token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      // Get user from token
-      req.user = await User.findById(decoded.id).select('-password');
+      // Get user from token and populate organization
+      req.user = await User.findById(decoded.id).select('-password').populate('organization');
       next();
     } catch (error) {
       res.status(401).json({ message: 'Not authorized, token failed' });
@@ -32,4 +32,3 @@ export const admin = (req, res, next) => {
   } else {
     res.status(403).json({ message: 'Not authorized as admin' });
   }
-}; 
