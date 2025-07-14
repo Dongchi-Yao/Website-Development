@@ -1,0 +1,105 @@
+version: '3.8'
+
+services:
+  # MongoDB with production settings
+  mongodb:
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-secure-password-change-this}
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongodb.conf:/etc/mongod.conf.orig
+    command: ["mongod", "--config", "/etc/mongod.conf.orig"]
+    ports: []  # Remove port exposure for security
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Backend with production optimizations
+  backend:
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME:-admin}:${MONGO_ROOT_PASSWORD:-secure-password-change-this}@mongodb:27017/cyber-risk-dashboard?authSource=admin
+      - JWT_SECRET=${JWT_SECRET:-your-super-secure-jwt-secret-key-change-this-in-production}
+      - JWT_EXPIRES_IN=30d
+      - PYTHON_SERVICE_URL=http://python-service:8000
+      - LOG_LEVEL=info
+      - BCRYPT_ROUNDS=12
+    ports: []  # Remove port exposure, access via nginx
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Python service with production settings
+  python-service:
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONPATH=/app
+      - LOG_LEVEL=info
+    ports: []  # Remove port exposure, access via nginx
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Frontend with production nginx
+  frontend:
+    ports:
+      - "80:80"
+      - "443:443"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Nginx reverse proxy for production
+  nginx:
+    image: nginx:alpine
+    container_name: cyber-risk-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - python-service
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx_logs:/var/log/nginx
+    networks:
+      - cyber-risk-network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  nginx_logs:
+    driver: local 
