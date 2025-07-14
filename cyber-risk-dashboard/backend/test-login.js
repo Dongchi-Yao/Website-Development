@@ -4,7 +4,7 @@ async function testLogin() {
   try {
     console.log('Testing login with non-existent user...');
     
-    const response = await fetch('http://localhost:5000/api/auth/login', {
+    const response = await fetch('http://localhost:50003/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -21,7 +21,7 @@ async function testLogin() {
 
     console.log('\nTesting login with existing user but wrong password...');
     
-    const response2 = await fetch('http://localhost:5000/api/auth/login', {
+    const response2 = await fetch('http://localhost:50003/api/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

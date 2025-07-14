@@ -63,4 +63,3 @@ docs/
 # Backend specific files
 backend/
 Dockerfile.frontend
-nginx.conf 

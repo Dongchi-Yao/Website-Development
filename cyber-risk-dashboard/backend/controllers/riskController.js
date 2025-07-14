@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://localhost:8000';
+const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://localhost:50004';
 
 // Map camelCase frontend keys to snake_case Python service keys
 const mapToSnakeCase = (data) => {

@@ -50,7 +50,7 @@ const ProfilePictureUpload: React.FC<ProfilePictureUploadProps> = ({
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const API_BASE_URL = 'http://localhost:5000';
+  const API_BASE_URL = 'http://localhost:50003';
 
   // Handle external open state
   useEffect(() => {

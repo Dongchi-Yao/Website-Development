@@ -59,7 +59,7 @@ The Cyber Risk Dashboard is an innovative platform designed to help construction
    ```
 
 6. **Access the application**
-   Open [http://localhost:5173](http://localhost:5173) in your browser
+   Open [http://localhost:8090](http://localhost:8090) in your browser
 
 ## 🏛️ Architecture
 
@@ -236,8 +236,8 @@ MONGODB_URI=mongodb://localhost:27017/cyber-risk-dashboard
 JWT_SECRET=your-secret-key
 
 # API Configuration
-API_BASE_URL=http://localhost:3001
-PORT=3001
+API_BASE_URL=http://localhost:50003
+PORT=50003
 
 # Development
 NODE_ENV=development

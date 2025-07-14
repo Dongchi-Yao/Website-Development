@@ -68,7 +68,7 @@ const RiskIdentification = () => {
 
   // Subscribe to risk probability updates
   useEffect(() => {
-    const eventSource = new EventSource('http://localhost:8000/stream');
+          const eventSource = new EventSource('http://localhost:50004/stream');
     
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);

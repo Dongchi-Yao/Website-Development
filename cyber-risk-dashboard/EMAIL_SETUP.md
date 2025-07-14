@@ -28,7 +28,7 @@ EMAIL_PASSWORD=your-app-password
 # Existing variables
 MONGODB_URI=mongodb://localhost:27017/cyber-risk-dashboard
 JWT_SECRET=your-super-secret-jwt-key-here-make-it-long-and-random
-PORT=5000
+PORT=50003
 ```
 
 ### 3. Alternative Email Services

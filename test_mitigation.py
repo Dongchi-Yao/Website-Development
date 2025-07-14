@@ -9,7 +9,7 @@ test_data = {
 # Test the mitigation strategy endpoint
 try:
     response = requests.post(
-        "http://localhost:8000/mitigation-strategy",
+        "http://localhost:50004/mitigation-strategy",
         json=test_data,
         headers={"Content-Type": "application/json"}
     )

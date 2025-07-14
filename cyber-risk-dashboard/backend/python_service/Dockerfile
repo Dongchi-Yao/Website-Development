@@ -22,12 +22,12 @@ COPY . .
 # Create models directory and ensure proper permissions
 RUN mkdir -p models && chmod 755 models
 
-# Expose port 8000
-EXPOSE 8000
+# Expose port 50004
+EXPOSE 50004
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+  CMD curl -f http://localhost:50004/health || exit 1
 
 # Start the application
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"] 
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "50004"] 

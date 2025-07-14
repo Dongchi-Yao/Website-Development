@@ -3,7 +3,7 @@ import json
 
 def test_risk_prediction(input_data):
     """Test the risk prediction endpoint with custom input data"""
-    url = "http://localhost:8000/predict"
+    url = "http://localhost:50004/predict"
     
     # Print input data for verification
     print("\nSending the following input data:")

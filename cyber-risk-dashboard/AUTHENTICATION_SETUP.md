@@ -18,10 +18,10 @@ MONGODB_URI=mongodb://localhost:27017/cyber-risk-dashboard
 JWT_SECRET=your-super-secret-jwt-key-here-make-it-long-and-random
 
 # Server Port
-PORT=5000
+PORT=50003
 
 # Python Service URL (for AI model)
-PYTHON_SERVICE_URL=http://localhost:8000
+PYTHON_SERVICE_URL=http://localhost:50004
 ```
 
 ### 2. MongoDB Setup
@@ -50,7 +50,7 @@ cd backend
 node server.js
 ```
 
-The server should start on port 5000 and connect to MongoDB.
+The server should start on port 50003 and connect to MongoDB.
 
 ## Frontend Features
 

@@ -22,7 +22,7 @@ MONGODB_URI=mongodb://localhost:27017/cyber-risk-dashboard
 JWT_SECRET=your_super_secret_jwt_key_here
 
 # Server Port
-PORT=5000
+PORT=50003
 
 # Email Configuration (for email verification)
 EMAIL_HOST=smtp.gmail.com
@@ -55,7 +55,7 @@ npm install
 npm start
 ```
 
-The backend should start on `http://localhost:5000`
+The backend should start on `http://localhost:50003`
 
 ### 3. Start the Python Risk Service
 
@@ -66,7 +66,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The Python service should start on `http://localhost:5001`
+The Python service should start on `http://localhost:50004`
 
 ## Frontend Setup
 
@@ -79,7 +79,7 @@ npm install
 npm run dev
 ```
 
-The frontend should start on `http://localhost:5173`
+The frontend should start on `http://localhost:8090`
 
 ## Troubleshooting
 
@@ -148,7 +148,7 @@ The system automatically grants admin privileges to:
 1. Start backend: `cd backend && npm start`
 2. Start Python service: `cd backend/python_service && python app.py`
 3. Start frontend: `cd .. && npm run dev`
-4. Open browser to `http://localhost:5173`
+4. Open browser to `http://localhost:8090`
 5. Create a new account with organization
 6. Complete a risk assessment
 7. View reports and analytics 

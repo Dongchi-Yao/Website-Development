@@ -86,11 +86,11 @@ npm run dev
 
 **✅ Expected Output:**
 ```
-Local:   http://localhost:5173/
+  Local:   http://localhost:8090/
 ```
 
 ### **3.3 Test Complete Authentication Flow**
-1. **Go to:** `http://localhost:5173/signup`
+1. **Go to:** `http://localhost:8090/signup`
 2. **Create account** with:
    - Name: Test User
    - Email: test@example.com  

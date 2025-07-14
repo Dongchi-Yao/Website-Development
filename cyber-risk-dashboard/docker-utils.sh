@@ -276,9 +276,9 @@ check_health() {
     print_header "Endpoint Tests"
     
     endpoints=(
-        "frontend:3000:/health"
-        "backend:5000:/health"
-        "python-service:8000:/health"
+        "frontend:8090:/health"
+        "backend:50003:/health"
+        "python-service:50004:/health"
     )
     
     for endpoint in "${endpoints[@]}"; do

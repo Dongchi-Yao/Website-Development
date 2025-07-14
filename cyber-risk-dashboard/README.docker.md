@@ -26,9 +26,9 @@ docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 | Service | Port | Description |
 |---------|------|-------------|
-| Frontend | 3000 | React application with Nginx |
-| Backend | 5000 | Node.js Express API |
-| Python Service | 8000 | FastAPI for ML/AI processing |
+| Frontend | 8090 | React application with Nginx |
+| Backend | 50003 | Node.js Express API |
+| Python Service | 50004 | FastAPI for ML/AI processing |
 | MongoDB | 27017 | Database |
 
 ## Scripts
@@ -136,9 +136,9 @@ docker system prune -a
 ## Access URLs
 
 ### Development
-- Frontend: http://localhost:3000
-- Backend: http://localhost:5000
-- Python Service: http://localhost:8000
+- Frontend: http://localhost:8090
+- Backend: http://localhost:50003
+- Python Service: http://localhost:50004
 
 ### Production
 - Frontend: https://localhost

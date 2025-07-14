@@ -324,7 +324,7 @@ const riskApiService = {
       }
 
       console.log('Sending data to API:', modelInput);
-      const response = await fetch('http://localhost:8000/predict', {
+      const response = await fetch('http://localhost:50004/predict', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -394,7 +394,7 @@ const riskApiService = {
   },
 
   checkHealth: async (): Promise<{ status: string; modelLoaded?: boolean }> => {
-    const response = await fetch('http://localhost:8000/health');
+    const response = await fetch('http://localhost:50004/health');
     return response.json();
   }
 };
@@ -3059,7 +3059,7 @@ const RiskQuantification = () => {
       ];
 
       // Call the mitigation strategy API with consistent current risk
-      const response = await fetch('http://localhost:8000/mitigation-strategy', {
+      const response = await fetch('http://localhost:50004/mitigation-strategy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3204,7 +3204,7 @@ const RiskQuantification = () => {
       ];
 
       // Call the mitigation strategy API with consistent current risk
-      const response = await fetch('http://localhost:8000/mitigation-strategy', {
+      const response = await fetch('http://localhost:50004/mitigation-strategy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

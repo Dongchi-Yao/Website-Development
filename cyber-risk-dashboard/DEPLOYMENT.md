@@ -31,9 +31,9 @@ The application consists of four main services:
    ```
 
 3. **Access the application**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:5000
-   - Python Service: http://localhost:8000
+   - Frontend: http://localhost:8090
+   - Backend API: http://localhost:50003
+   - Python Service: http://localhost:50004
    - MongoDB: mongodb://localhost:27017
 
 ## Production Deployment
@@ -91,17 +91,17 @@ The application consists of four main services:
 ## Service Configuration
 
 ### Frontend (React + Nginx)
-- **Port**: 3000 (development), 80/443 (production)
+- **Port**: 8090 (development), 80/443 (production)
 - **Build**: Multi-stage build with Nginx
 - **Features**: Static file serving, API proxying, SPA routing
 
 ### Backend (Node.js)
-- **Port**: 5000
+- **Port**: 50003
 - **Environment**: Production optimized
 - **Features**: Authentication, file uploads, API endpoints
 
 ### Python Service (FastAPI)
-- **Port**: 8000
+- **Port**: 50004
 - **Environment**: ML/AI processing
 - **Features**: Risk assessment, predictions, model serving
 
@@ -114,8 +114,8 @@ The application consists of four main services:
 
 All services include health checks:
 - **Frontend**: `curl -f http://localhost:80/health`
-- **Backend**: `curl -f http://localhost:5000/health`
-- **Python Service**: `curl -f http://localhost:8000/health`
+- **Backend**: `curl -f http://localhost:50003/health`
+- **Python Service**: `curl -f http://localhost:50004/health`
 - **MongoDB**: MongoDB ping command
 
 ## Backup and Recovery

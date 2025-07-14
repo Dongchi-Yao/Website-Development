@@ -205,9 +205,9 @@ if [[ "$ENVIRONMENT" == "production" ]]; then
     echo "  - Backend API: https://localhost/api"
     echo "  - Python Service: https://localhost/python"
 else
-    echo "  - Frontend: http://localhost:3000"
-    echo "  - Backend API: http://localhost:5000"
-    echo "  - Python Service: http://localhost:8000"
+    echo "  - Frontend: http://localhost:8090"
+    echo "  - Backend API: http://localhost:50003"
+    echo "  - Python Service: http://localhost:50004"
     echo "  - MongoDB: mongodb://localhost:27017"
 fi
 echo ""

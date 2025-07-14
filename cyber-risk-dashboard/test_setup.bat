@@ -24,7 +24,7 @@ echo To test manually:
 echo 1. Run: cd backend ^&^& node server.js
 echo 2. Should see: "MongoDB Connected" and "Server running on port 5000"
 echo 3. Run: npm run dev (in separate terminal)
-echo 4. Go to: http://localhost:5173/signup
+echo 4. Go to: http://localhost:8090/signup
 echo.
 
 goto :success

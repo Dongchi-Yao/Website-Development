@@ -7,8 +7,8 @@ Create `backend/.env` file with:
 ```
 MONGODB_URI=mongodb://localhost:27017/cyber-risk-dashboard
 JWT_SECRET=your-super-secret-jwt-key-12345
-PORT=5000
-PYTHON_SERVICE_URL=http://localhost:8000
+PORT=50003
+PYTHON_SERVICE_URL=http://localhost:50004
 ```
 
 ### 2. MongoDB Database - NEEDS SETUP
@@ -26,7 +26,7 @@ All required packages are installed in main package.json
 4. Test: npm run dev
 
 ## Expected Results:
-- Backend: "MongoDB Connected" + "Server running on port 5000"
+- Backend: "MongoDB Connected" + "Server running on port 50003"
 - Frontend: Able to register/login users successfully
 
 ## Current Status:
