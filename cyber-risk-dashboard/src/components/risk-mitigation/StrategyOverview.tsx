@@ -27,6 +27,7 @@ interface StrategyOverviewProps {
   selectedRound: number;
   isUpdatingStrategy: boolean;
   onRoundSelect: (round: number) => void;
+  currentRiskScore?: number; // Override for consistent risk calculation
 }
 
 export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
@@ -34,6 +35,7 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
   selectedRound,
   isUpdatingStrategy,
   onRoundSelect,
+  currentRiskScore,
 }) => {
   const theme = useTheme();
 
@@ -58,11 +60,60 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
   };
 
   const getRiskLevelLabel = (risk: number) => {
-    if (risk >= 0.8) return 'Critical';
-    if (risk >= 0.6) return 'High';
-    if (risk >= 0.3) return 'Medium';
-    return 'Low';
+    if (risk < 0.3) return 'Low';
+    if (risk < 0.6) return 'Medium';
+    if (risk < 0.85) return 'High';
+    return 'Critical';
   };
+
+  // Helper function to calculate and format risk reduction properly
+  const formatRiskReduction = (round: any) => {
+    // Use consistent current risk calculation
+    const currentRisk = currentRiskScore !== undefined ? currentRiskScore : strategy.initialRisk;
+    
+    // Calculate absolute percentage point reduction
+    const absoluteReduction = (currentRisk - round.projectedRisk) * 100;
+    
+    return absoluteReduction.toFixed(1);
+  };
+
+  // Helper function to calculate total risk reduction properly
+  const formatTotalReduction = () => {
+    // Use consistent current risk calculation
+    const currentRisk = currentRiskScore !== undefined ? currentRiskScore : strategy.initialRisk;
+    
+    // Calculate absolute percentage point reduction from current to final
+    const absoluteReduction = (currentRisk - strategy.finalRisk) * 100;
+    
+    return absoluteReduction.toFixed(1);
+  };
+
+  // Helper function to calculate implementation progress based on actual risk reduction
+  const calculateImplementationProgress = () => {
+    // Calculate progress based on actual risk reduction achieved
+    // Progress = (Initial Risk - Current Risk) / (Initial Risk - Final Risk) * 100
+    
+    const initialRisk = strategy.initialRisk;
+    const finalRisk = strategy.finalRisk;
+    const currentRisk = currentRiskScore !== undefined ? currentRiskScore : initialRisk;
+    
+    // If no risk reduction is possible, return 0
+    if (initialRisk <= finalRisk) return 0;
+    
+    // Calculate the total possible reduction
+    const totalPossibleReduction = initialRisk - finalRisk;
+    
+    // Calculate the achieved reduction so far
+    const achievedReduction = initialRisk - currentRisk;
+    
+    // Calculate progress as a percentage
+    const progressPercentage = (achievedReduction / totalPossibleReduction) * 100;
+    
+    // Ensure progress is between 0 and 100
+    return Math.max(0, Math.min(progressPercentage, 100));
+  };
+
+  const implementationProgress = calculateImplementationProgress();
 
   return (
     <Box>
@@ -77,18 +128,18 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
           <Grid item xs={12} md={3}>
             <Box sx={{ textAlign: 'center' }}>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Initial Risk Level
+                Current Risk Level
               </Typography>
-              <Typography variant="h4" sx={{ color: getRiskLevelColor(strategy.initialRisk), fontWeight: 'bold' }}>
-                {(strategy.initialRisk * 100).toFixed(0)}%
+              <Typography variant="h4" sx={{ color: getRiskLevelColor(currentRiskScore !== undefined ? currentRiskScore : strategy.initialRisk), fontWeight: 'bold' }}>
+                {currentRiskScore !== undefined ? (currentRiskScore * 100).toFixed(0) : (strategy.initialRisk * 100).toFixed(0)}%
               </Typography>
               <Chip 
-                label={getRiskLevelLabel(strategy.initialRisk)} 
+                label={getRiskLevelLabel(currentRiskScore !== undefined ? currentRiskScore : strategy.initialRisk)} 
                 size="small" 
                 sx={{ 
                   mt: 1,
-                  bgcolor: alpha(getRiskLevelColor(strategy.initialRisk), 0.1),
-                  color: getRiskLevelColor(strategy.initialRisk),
+                  bgcolor: alpha(getRiskLevelColor(currentRiskScore !== undefined ? currentRiskScore : strategy.initialRisk), 0.1),
+                  color: getRiskLevelColor(currentRiskScore !== undefined ? currentRiskScore : strategy.initialRisk),
                   fontWeight: 'bold'
                 }} 
               />
@@ -122,7 +173,7 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
                 Total Reduction
               </Typography>
               <Typography variant="h4" color="success.main" sx={{ fontWeight: 'bold' }}>
-                -{strategy.totalReductionPercentage.toFixed(1)}%
+                -{formatTotalReduction()}%
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mt: 1 }}>
                 <TrendingDownIcon color="success" fontSize="small" />
@@ -154,15 +205,15 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
         <Box sx={{ mt: 4 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Risk Mitigation Progress
+              Risk Reduction Progress
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              {strategy.totalReductionPercentage.toFixed(1)}% Complete
+              {implementationProgress.toFixed(1)}% Risk Reduced
             </Typography>
           </Box>
           <LinearProgress 
             variant="determinate" 
-            value={strategy.totalReductionPercentage} 
+            value={implementationProgress} 
             sx={{ 
               height: 10, 
               borderRadius: 5,
@@ -173,6 +224,14 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
               }
             }} 
           />
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+            <Typography variant="caption" color="text.secondary">
+              Initial Risk: {(strategy.initialRisk * 100).toFixed(0)}%
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              Target Risk: {(strategy.finalRisk * 100).toFixed(0)}%
+            </Typography>
+          </Box>
         </Box>
       </Paper>
 
@@ -181,7 +240,7 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
         Implementation Rounds
       </Typography>
       
-      <Grid container spacing={3}>
+      <Grid container spacing={3} sx={{ justifyContent: 'center' }}>
         {strategy.rounds.map((round) => (
           <Grid item xs={12} md={6} lg={4} key={round.roundNumber}>
             <Card 
@@ -218,8 +277,8 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
                       <Typography variant="caption" color="text.secondary" display="block">
                         Current Risk
                       </Typography>
-                      <Typography variant="h6" sx={{ color: getRiskLevelColor(round.currentRisk) }}>
-                        {(round.currentRisk * 100).toFixed(0)}%
+                      <Typography variant="h6" sx={{ color: getRiskLevelColor(currentRiskScore !== undefined ? currentRiskScore : round.currentRisk) }}>
+                        {((currentRiskScore !== undefined ? currentRiskScore : round.currentRisk) * 100).toFixed(0)}%
                       </Typography>
                     </Box>
                     
@@ -229,9 +288,9 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
                       <Typography variant="caption" color="text.secondary" display="block">
                         After Round
                       </Typography>
-                      <Typography variant="h6" sx={{ color: getRiskLevelColor(round.projectedRisk) }}>
-                        {(round.projectedRisk * 100).toFixed(0)}%
-                      </Typography>
+                                          <Typography variant="h6" sx={{ color: getRiskLevelColor(round.projectedRisk) }}>
+                      {(round.projectedRisk * 100).toFixed(0)}%
+                    </Typography>
                     </Box>
                   </Box>
                   
@@ -242,7 +301,7 @@ export const StrategyOverview: React.FC<StrategyOverviewProps> = ({
                     textAlign: 'center'
                   }}>
                     <Typography variant="h5" color="success.main" sx={{ fontWeight: 'bold' }}>
-                      -{round.reductionPercentage.toFixed(1)}%
+                      -{formatRiskReduction(round)}%
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
                       Risk Reduction

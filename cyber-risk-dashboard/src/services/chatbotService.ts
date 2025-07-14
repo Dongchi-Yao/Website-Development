@@ -85,6 +85,11 @@ interface RiskMitigationStrategy {
 // Helper function to get API key
 const getApiKey = () => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  console.log('🔑 API Key check:', {
+    apiKey: apiKey ? 'SET' : 'NOT SET',
+    length: apiKey ? apiKey.length : 0,
+    envObject: import.meta.env
+  });
   if (!apiKey) {
     console.error('VITE_GEMINI_API_KEY is not set in the frontend .env file');
     return '';

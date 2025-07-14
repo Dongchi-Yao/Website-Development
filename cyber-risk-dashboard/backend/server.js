@@ -11,7 +11,20 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load environment variables from .env file in the backend directory
-dotenv.config({ path: join(__dirname, '.env') });
+dotenv.config();
+
+// Temporary hardcoded environment variables for testing
+if (!process.env.MONGODB_URI) {
+  process.env.MONGODB_URI = 'mongodb+srv://admin:2TF9E1VHSZowbXCe@cluster0.fmd7bmj.mongodb.net/cyber-risk-dashboard?retryWrites=true&w=majority&appName=Cluster0';
+}
+if (!process.env.JWT_SECRET) {
+  process.env.JWT_SECRET = 'f287206e307ea2ff6502b258681f61cb3a980c6d29f73b5ff25af03601479be6';
+}
+
+// Debug environment variables (remove in production)
+console.log('Environment variables loaded:');
+console.log('MONGODB_URI:', process.env.MONGODB_URI ? 'Set' : 'Not set');
+console.log('JWT_SECRET:', process.env.JWT_SECRET ? 'Set' : 'Not set');
 
 const app = express();
 
@@ -39,7 +52,9 @@ import {
   verifyEmail,
   resendVerification,
   forgotPassword,
-  resetPassword
+  resetPassword,
+  changePassword,
+  deleteAccount
 } from './controllers/authController.js';
 import { calculateRisk, healthCheck } from './controllers/riskController.js';
 import { saveProject, getUserProjects, getProject, updateProject, deleteProject } from './controllers/projectController.js';
@@ -61,6 +76,8 @@ app.post('/api/auth/resend-verification', resendVerification);
 app.post('/api/auth/forgot-password', forgotPassword);
 app.post('/api/auth/reset-password', resetPassword);
 app.get('/api/auth/profile', protect, getProfile);
+app.put('/api/auth/change-password', protect, changePassword);
+app.delete('/api/auth/delete-account', protect, deleteAccount);
 
 // Profile picture routes
 app.post('/api/auth/upload-profile-picture', protect, (req, res, next) => {
@@ -115,27 +132,4 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-}); 
-app.get('/api/organizations/:organizationId/stats', protect, getOrganizationStats);
-app.put('/api/organizations/:organizationId', protect, updateOrganization);
-app.delete('/api/organizations/:organizationId/members/:userId', protect, removeMember);
-
-// Add diagnostic endpoint (remove in production)
-app.get('/api/debug/user', protect, (req, res) => {
-  res.json({
-    user: req.user,
-    hasOrganization: !!req.user?.organization,
-    organizationId: req.user?.organization?._id || req.user?.organization,
-    organizationType: typeof req.user?.organization
-  });
 });
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!' });
-});
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);

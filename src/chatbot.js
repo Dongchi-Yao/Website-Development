@@ -18,7 +18,7 @@ const SYSTEM_INSTRUCTIONS = `You are a specialized AI assistant with expertise i
 
 class SpecializedChatbot {
     constructor() {
-        this.model = genAI.getGenerativeModel({ model: "gemini-pro" });
+        this.model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
         this.chat = this.model.startChat({
             history: [],
             generationConfig: {

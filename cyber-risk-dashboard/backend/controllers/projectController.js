@@ -8,7 +8,12 @@ export const saveProject = async (req, res) => {
       projectInfo,
       riskResults,
       mitigationStrategy,
-      conversations
+      conversations,
+      appliedRecommendations,
+      lockedRecommendations,
+      enhancedDescriptions,
+      selectedRound,
+      changeableProperties
     } = req.body;
 
     // Check if project name already exists for this user
@@ -32,7 +37,12 @@ export const saveProject = async (req, res) => {
       projectInfo,
       riskResults,
       mitigationStrategy,
-      conversations: conversations || []
+      conversations: conversations || [],
+      appliedRecommendations: appliedRecommendations || [],
+      lockedRecommendations: lockedRecommendations || [],
+      enhancedDescriptions: enhancedDescriptions || [],
+      selectedRound: selectedRound || 0,
+      changeableProperties: changeableProperties || []
     });
 
     await project.save();
@@ -77,7 +87,9 @@ export const getUserProjects = async (req, res) => {
           project.riskResults.supplyChain?.score || 0
         ];
         
-        averageRisk = risks.reduce((sum, risk) => sum + risk, 0) / risks.length;
+        // Python service returns scores as percentages (0-100), convert to decimal (0-1)
+        const riskDecimals = risks.map(risk => risk / 100);
+        averageRisk = riskDecimals.reduce((sum, risk) => sum + risk, 0) / riskDecimals.length;
         
         if (averageRisk >= 0.8) riskLevel = 'critical';
         else if (averageRisk >= 0.6) riskLevel = 'high';
@@ -144,7 +156,12 @@ export const updateProject = async (req, res) => {
       projectInfo,
       riskResults,
       mitigationStrategy,
-      conversations
+      conversations,
+      appliedRecommendations,
+      lockedRecommendations,
+      enhancedDescriptions,
+      selectedRound,
+      changeableProperties
     } = req.body;
 
     const project = await Project.findOne({
@@ -180,6 +197,11 @@ export const updateProject = async (req, res) => {
     if (riskResults) project.riskResults = riskResults;
     if (mitigationStrategy) project.mitigationStrategy = mitigationStrategy;
     if (conversations) project.conversations = conversations;
+    if (appliedRecommendations !== undefined) project.appliedRecommendations = appliedRecommendations;
+    if (lockedRecommendations !== undefined) project.lockedRecommendations = lockedRecommendations;
+    if (enhancedDescriptions !== undefined) project.enhancedDescriptions = enhancedDescriptions;
+    if (selectedRound !== undefined) project.selectedRound = selectedRound;
+    if (changeableProperties !== undefined) project.changeableProperties = changeableProperties;
 
     await project.save();
 
@@ -228,3 +250,4 @@ export const deleteProject = async (req, res) => {
       message: error.message
     });
   }
+};

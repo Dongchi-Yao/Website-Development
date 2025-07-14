@@ -16,11 +16,12 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { isValidEmail } from '../utils/validation';
 import ForgotPassword from '../components/ForgotPassword';
+import EmailVerification from '../components/EmailVerification';
 
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, isLoading, isAuthenticated, error, clearError } = useAuth();
+  const { login, isLoading, isAuthenticated, error, clearError, user } = useAuth();
   
   const [formData, setFormData] = useState({
     email: location.state?.email || '',
@@ -29,15 +30,21 @@ const Login = () => {
   const [localError, setLocalError] = useState('');
   const [showSuccess, setShowSuccess] = useState(false);
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showEmailVerification, setShowEmailVerification] = useState(false);
   const [successMessage, setSuccessMessage] = useState(location.state?.message || '');
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated and verified
   useEffect(() => {
-    if (isAuthenticated) {
-      const from = location.state?.from?.pathname || '/';
-      navigate(from, { replace: true });
+    if (isAuthenticated && user) {
+      // Check if email is verified (skip for admins)
+      if (user.isEmailVerified === false && user.role !== 'admin') {
+        setShowEmailVerification(true);
+      } else {
+        const from = location.state?.from?.pathname || '/';
+        navigate(from, { replace: true });
+      }
     }
-  }, [isAuthenticated, navigate, location]);
+  }, [isAuthenticated, user, navigate, location]);
 
   // Clear location state after displaying message
   useEffect(() => {
@@ -91,7 +98,7 @@ const Login = () => {
     try {
       await login(formData.email, formData.password);
       setShowSuccess(true);
-      // Navigation will be handled by useEffect when isAuthenticated changes
+      // Email verification check will be handled by useEffect when user state changes
     } catch (err) {
       // Error is handled by the AuthContext
       console.error('Login failed:', err);
@@ -211,6 +218,17 @@ const Login = () => {
         <ForgotPassword
           open={showForgotPassword}
           onClose={() => setShowForgotPassword(false)}
+        />
+
+        <EmailVerification
+          open={showEmailVerification}
+          onClose={() => setShowEmailVerification(false)}
+          email={formData.email}
+          onSuccess={() => {
+            setShowEmailVerification(false);
+            const from = location.state?.from?.pathname || '/';
+            navigate(from, { replace: true });
+          }}
         />
       </motion.div>
     </Container>

@@ -132,6 +132,29 @@ const projectSchema = new mongoose.Schema({
   riskResults: riskResultsSchema,
   mitigationStrategy: riskMitigationStrategySchema,
   conversations: [conversationSchema],
+  
+  // Recommendation Management Fields
+  appliedRecommendations: {
+    type: [String],
+    default: []
+  },
+  lockedRecommendations: {
+    type: [String],
+    default: []
+  },
+  enhancedDescriptions: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: []
+  },
+  selectedRound: {
+    type: Number,
+    default: 0
+  },
+  changeableProperties: {
+    type: [mongoose.Schema.Types.Mixed],
+    default: []
+  },
+  
   createdAt: {
     type: Date,
     default: Date.now
@@ -149,3 +172,5 @@ projectSchema.pre('save', function(next) {
 });
 
 const Project = mongoose.model('Project', projectSchema);
+
+export default Project;

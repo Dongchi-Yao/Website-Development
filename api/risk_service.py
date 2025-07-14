@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import torch
 import numpy as np
 import pandas as pd
-from typing import List, Dict
+from typing import List, Dict, Optional
 import os
 import json
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +32,7 @@ latest_probabilities = None
 
 class RiskInput(BaseModel):
     user_data: List[int]
+    current_risk: Optional[float] = None  # Override for consistent risk calculation
 
 class RiskOutput(BaseModel):
     probabilities: List[float]
@@ -306,6 +307,7 @@ class RecommendationRiskReductionRequest(BaseModel):
     featureName: str
     currentOption: str
     recommendedOption: str
+    current_risk: Optional[float] = None  # Override for consistent risk calculation
 
 @app.post("/recommendation-risk-reduction")
 async def calculate_recommendation_risk_reduction(request: RecommendationRiskReductionRequest) -> RecommendationRiskReduction:
@@ -323,7 +325,8 @@ async def calculate_recommendation_risk_reduction(request: RecommendationRiskRed
             request.featureGroup,
             request.featureName,
             request.currentOption,
-            request.recommendedOption
+            request.recommendedOption,
+            current_risk_override=request.current_risk
         )
         
         return RecommendationRiskReduction(
@@ -349,8 +352,11 @@ async def generate_mitigation_strategy(input_data: RiskInput) -> MitigationStrat
         raise HTTPException(status_code=500, detail="Mitigation analyzer not initialized")
     
     try:
-        # Generate mitigation strategy
-        strategy_data = mitigation_analyzer.generate_mitigation_strategy(input_data.user_data)
+        # Generate mitigation strategy with optional current_risk override
+        strategy_data = mitigation_analyzer.generate_mitigation_strategy(
+            input_data.user_data, 
+            current_risk_override=input_data.current_risk
+        )
         logger.debug(f"Mitigation strategy generated successfully")
         
         # Convert to Pydantic models

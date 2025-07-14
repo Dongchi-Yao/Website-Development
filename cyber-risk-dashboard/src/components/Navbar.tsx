@@ -28,9 +28,11 @@ import Brightness7Icon from '@mui/icons-material/Brightness7';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { styled } from '@mui/material/styles';
 import React from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import ProfilePictureUpload from './ProfilePictureUpload';
 
 interface NavbarProps {
@@ -62,6 +64,7 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { isAuthenticated, user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -82,6 +85,11 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
 
   const handleProfilePictureClick = () => {
     setProfilePictureDialogOpen(true);
+    handleUserMenuClose();
+  };
+
+  const handleAccountSettingsClick = () => {
+    navigate('/account-settings');
     handleUserMenuClose();
   };
 
@@ -131,6 +139,23 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
                 )}
               </Box>
             </Box>
+          </ListItem>
+          <ListItem>
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<SettingsIcon />}
+              onClick={() => {
+                handleAccountSettingsClick();
+                handleDrawerToggle();
+              }}
+              sx={{ 
+                fontSize: '0.75rem',
+                textTransform: 'none',
+              }}
+            >
+              Account Settings
+            </Button>
           </ListItem>
           <ListItem>
             <Button
@@ -319,6 +344,10 @@ const Navbar = ({ onToggleColorMode, mode }: NavbarProps) => {
                       <MenuItem onClick={handleProfilePictureClick}>
                         <PhotoCameraIcon sx={{ mr: 1 }} />
                         Profile Picture
+                      </MenuItem>
+                      <MenuItem onClick={handleAccountSettingsClick}>
+                        <SettingsIcon sx={{ mr: 1 }} />
+                        Account Settings
                       </MenuItem>
                       <MenuItem onClick={handleLogout}>
                         <LogoutIcon sx={{ mr: 1 }} />

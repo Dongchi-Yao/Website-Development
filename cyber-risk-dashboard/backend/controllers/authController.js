@@ -173,6 +173,7 @@ export const login = async (req, res) => {
       token,
     });
   } catch (error) {
+    console.error('Login error:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
@@ -449,3 +450,119 @@ export const deleteProfilePicture = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
   }
+};
+
+// Change password for authenticated users
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    
+    // Validate input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required' });
+    }
+    
+    // Validate new password strength
+    const passwordValidation = validatePassword(newPassword);
+    if (!passwordValidation.isValid) {
+      return res.status(400).json({ 
+        message: 'New password requirements not met',
+        errors: passwordValidation.errors 
+      });
+    }
+    
+    // Get user with password for verification
+    const user = await User.findById(req.user.id).select('+password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Verify current password
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+    
+    // Check if new password is different from current
+    const isSamePassword = await user.comparePassword(newPassword);
+    if (isSamePassword) {
+      return res.status(400).json({ message: 'New password must be different from current password' });
+    }
+    
+    // Update password (will be hashed by the pre-save middleware)
+    user.password = newPassword;
+    await user.save();
+    
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Delete account for authenticated users
+export const deleteAccount = async (req, res) => {
+  try {
+    const { password, confirmationText } = req.body;
+    
+    // Validate input
+    if (!password) {
+      return res.status(400).json({ message: 'Password is required to delete account' });
+    }
+    
+    if (confirmationText !== 'DELETE') {
+      return res.status(400).json({ message: 'Please type "DELETE" to confirm account deletion' });
+    }
+    
+    // Get user with password for verification
+    const user = await User.findById(req.user.id).select('+password').populate('organization');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    // Verify password
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+      return res.status(400).json({ message: 'Incorrect password' });
+    }
+    
+    // Check if user is the manager of an organization
+    if (user.role === 'manager' && user.organization) {
+      const Organization = (await import('../models/Organization.js')).default;
+      const organization = await Organization.findById(user.organization._id);
+      if (organization && organization.manager.toString() === user._id.toString()) {
+        return res.status(400).json({ 
+          message: 'Cannot delete account: You are the manager of an organization. Please transfer management or delete the organization first.' 
+        });
+      }
+    }
+    
+    // Remove user from organization if they belong to one
+    if (user.organization) {
+      const Organization = (await import('../models/Organization.js')).default;
+      await Organization.findByIdAndUpdate(user.organization._id, {
+        $pull: { members: user._id }
+      });
+    }
+    
+    // Delete profile picture if it exists
+    if (user.profilePicture) {
+      const imagePath = path.join(__dirname, '../uploads/profile-pictures', path.basename(user.profilePicture));
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+    
+    // Delete user projects
+    const Project = (await import('../models/Project.js')).default;
+    await Project.deleteMany({ user: user._id });
+    
+    // Delete the user
+    await User.findByIdAndDelete(req.user.id);
+    
+    res.json({ message: 'Account deleted successfully' });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};

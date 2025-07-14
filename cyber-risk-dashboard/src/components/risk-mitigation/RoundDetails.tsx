@@ -58,6 +58,8 @@ interface RoundDetailsProps {
   onContinueToNextRound: () => void;
   applyingRecommendation: string | null;
   hasNextRound: boolean;
+  currentRiskScore?: number; // Reliable risk calculation from Risk Analysis Results
+  initialRisk?: number; // Initial risk before any mitigation (remains constant)
 }
 
 type SortOption = 'default' | 'riskReduction' | 'cost' | 'priority';
@@ -76,6 +78,8 @@ export const RoundDetails: React.FC<RoundDetailsProps> = ({
   onContinueToNextRound,
   applyingRecommendation,
   hasNextRound,
+  currentRiskScore,
+  initialRisk,
 }) => {
   const [sortBy, setSortBy] = useState<SortOption>('default');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -188,10 +192,37 @@ export const RoundDetails: React.FC<RoundDetailsProps> = ({
     return theme.palette.error.main; // Red for low reduction
   };
 
-  // Helper function to format risk reduction display
-  const formatRiskReduction = (reduction: number | undefined) => {
-    if (!reduction || reduction === 0) return null;
-    return `${reduction.toFixed(1)} pts`;
+  // Helper function to format risk reduction display with absolute and relative values
+  const formatRiskReduction = (reductionPercentage: number | undefined, currentRisk: number) => {
+    if (!reductionPercentage || reductionPercentage === 0) return null;
+    
+    // Use consistent risk calculation - prefer currentRiskScore over round.currentRisk
+    const consistentCurrentRisk = currentRiskScore !== undefined ? currentRiskScore : currentRisk;
+    
+    // API returns:
+    // - currentRisk as decimal (0.85 for 85% risk)
+    // - reductionPercentage as relative percentage (25.0 for 25% reduction)
+    
+    // Convert current risk to percentage for calculation
+    const currentRiskPercent = consistentCurrentRisk * 100; // 0.85 → 85%
+    
+    // Calculate absolute percentage point reduction
+    // If current risk is 85% and we reduce by 25%, the absolute reduction is 85% × 25% = 21.25 percentage points
+    const absolutePoints = (currentRiskPercent * reductionPercentage) / 100;
+    
+    // The relative change is already provided by the API
+    const relativeChange = reductionPercentage;
+    
+    return (
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+          {absolutePoints.toFixed(1)} pts
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+          {relativeChange.toFixed(1)}% reduction
+        </Typography>
+      </Box>
+    );
   };
 
   return (
@@ -212,26 +243,38 @@ export const RoundDetails: React.FC<RoundDetailsProps> = ({
       {/* Round Stats */}
       <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
         <Grid container spacing={2}>
-          <Grid item xs={6} sm={3}>
-            <Typography variant="body2" color="text.secondary">Risk Reduction</Typography>
-            <Typography variant="h6" color={getRiskReductionColor(round.reductionPercentage)}>
-              {formatRiskReduction(round.reductionPercentage)}
+          {/* First Row */}
+          <Grid item xs={6} sm={2.4} sx={{ textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">Initial Risk</Typography>
+            <Typography variant="h6" color="text.secondary">
+              {initialRisk ? (initialRisk * 100).toFixed(0) : 'N/A'}%
             </Typography>
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid item xs={6} sm={2.4} sx={{ textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">Current Risk</Typography>
             <Typography variant="h6">
-              {(round.currentRisk * 100).toFixed(0)}%
+              {((currentRiskScore !== undefined ? currentRiskScore : round.currentRisk) * 100).toFixed(0)}%
             </Typography>
           </Grid>
-          <Grid item xs={6} sm={3}>
+          <Grid item xs={6} sm={2.4} sx={{ textAlign: 'center' }}>
             <Typography variant="body2" color="text.secondary">Projected Risk</Typography>
-            <Typography variant="h6" color="primary.main">
-              {(round.projectedRisk * 100).toFixed(0)}%
-            </Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <Typography variant="h6" color="primary.main" sx={{ fontWeight: 600, mb: 0.5 }}>
+                {(round.projectedRisk * 100).toFixed(0)}%
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                after round
+              </Typography>
+            </Box>
           </Grid>
-          <Grid item xs={6} sm={3}>
-            <Typography variant="body2" color="text.secondary">Applied</Typography>
+          <Grid item xs={6} sm={2.4} sx={{ textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">Risk Reduction</Typography>
+            <Box sx={{ color: getRiskReductionColor(round.reductionPercentage) }}>
+              {formatRiskReduction(round.reductionPercentage, currentRiskScore !== undefined ? currentRiskScore : round.currentRisk)}
+            </Box>
+          </Grid>
+          <Grid item xs={6} sm={2.4} sx={{ textAlign: 'center' }}>
+            <Typography variant="body2" color="text.secondary">Suggestions Applied</Typography>
             <Typography variant="h6">
               {appliedCount}/{round.recommendations.length}
             </Typography>
@@ -632,7 +675,7 @@ export const RoundDetails: React.FC<RoundDetailsProps> = ({
                         }}
                       />
 
-                      {(recommendation.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction) && (
+                      {!isAlreadySet && (recommendation.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction) && (
                         <Tooltip
                           title={
                             <Box>
@@ -640,10 +683,10 @@ export const RoundDetails: React.FC<RoundDetailsProps> = ({
                                 Risk Reduction Impact
                               </Typography>
                               <Typography variant="body2" sx={{ mb: 1 }}>
-                                This shows the absolute percentage point reduction in risk.
+                                This shows the absolute percentage point reduction in risk for this specific recommendation.
                               </Typography>
                               <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-                                For example: If your risk goes from 60% to 30%, that's a reduction of 30 percentage points (not 50%).
+                                For example: If your current risk is 85% and this recommendation reduces it by 25%, that's a reduction of 21.3 percentage points (25% of 85%).
                               </Typography>
                             </Box>
                           }
@@ -651,7 +694,7 @@ export const RoundDetails: React.FC<RoundDetailsProps> = ({
                         >
                           <Chip
                             icon={<TrendingDownIcon fontSize="small" />}
-                            label={`-${(enhancedRecommendation?.calculatedRiskReduction || recommendation.riskReductionPercentage || 0).toFixed(1)} pts`}
+                            label={`-${(((currentRiskScore !== undefined ? currentRiskScore : round.currentRisk) * 100) * (enhancedRecommendation?.calculatedRiskReduction || recommendation.riskReductionPercentage || 0) / 100).toFixed(1)} pts`}
                             size="small"
                             sx={{
                               bgcolor: alpha(getRiskReductionColor(enhancedRecommendation?.calculatedRiskReduction || recommendation.riskReductionPercentage || 0), 0.1),
@@ -667,6 +710,22 @@ export const RoundDetails: React.FC<RoundDetailsProps> = ({
                             }}
                           />
                         </Tooltip>
+                      )}
+                      
+                      {isAlreadySet && (
+                        <Chip
+                          icon={<CheckIcon fontSize="small" />}
+                          label="No change needed"
+                          size="small"
+                          sx={{
+                            bgcolor: alpha(theme.palette.success.main, 0.1),
+                            color: theme.palette.success.main,
+                            borderColor: theme.palette.success.main,
+                            borderWidth: 1,
+                            borderStyle: 'solid',
+                            fontWeight: 'bold',
+                          }}
+                        />
                       )}
                     </Box>
 

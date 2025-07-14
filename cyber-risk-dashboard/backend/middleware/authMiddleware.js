@@ -32,3 +32,13 @@ export const admin = (req, res, next) => {
   } else {
     res.status(403).json({ message: 'Not authorized as admin' });
   }
+};
+
+// Middleware to check if user is manager
+export const manager = (req, res, next) => {
+  if (req.user && (req.user.role === 'admin' || req.user.role === 'manager')) {
+    next();
+  } else {
+    res.status(403).json({ message: 'Not authorized as manager' });
+  }
+};

@@ -80,7 +80,9 @@ export const getOrganizationProjects = async (req, res) => {
         
         const validRisks = risks.filter(risk => !isNaN(risk) && risk !== null);
         if (validRisks.length > 0) {
-          averageRisk = validRisks.reduce((sum, risk) => sum + risk, 0) / validRisks.length;
+          // Python service returns scores as percentages (0-100), convert to decimal (0-1)
+          const riskDecimals = validRisks.map(risk => risk / 100);
+          averageRisk = riskDecimals.reduce((sum, risk) => sum + risk, 0) / riskDecimals.length;
         }
         
         if (averageRisk >= 0.75) riskLevel = 'critical';
@@ -254,7 +256,7 @@ export const getOrganizationStats = async (req, res) => {
       let totalRisk = 0;
       let mitigatedProjects = 0;
 
-      projects.forEach(project => {
+              projects.forEach(project => {
         if (project.riskResults) {
           const risks = [
             project.riskResults.ransomware?.score || 0,
@@ -263,13 +265,16 @@ export const getOrganizationStats = async (req, res) => {
             project.riskResults.insiderAttack?.score || 0,
             project.riskResults.supplyChain?.score || 0
           ];
-          const avgRisk = risks.reduce((a, b) => a + b, 0) / risks.length;
+          // Python service returns scores as percentages (0-100), convert to decimal (0-1)
+          const riskDecimals = risks.map(risk => risk / 100);
+          const avgRisk = riskDecimals.reduce((a, b) => a + b, 0) / riskDecimals.length;
           totalRisk += avgRisk;
 
           // Track top risks
           Object.entries(project.riskResults).forEach(([type, data]) => {
             if (data?.score) {
-              stats.topRisks[type] = (stats.topRisks[type] || 0) + data.score;
+              // Python service returns scores as percentages (0-100), convert to decimal (0-1)
+              stats.topRisks[type] = (stats.topRisks[type] || 0) + (data.score / 100);
             }
           });
 

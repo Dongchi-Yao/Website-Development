@@ -39,6 +39,8 @@ interface AuthContextType extends AuthState {
   resendVerification: (email: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (email: string, otp: string, newPassword: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  deleteAccount: (password: string, confirmationText: string) => Promise<void>;
   logout: () => void;
   clearError: () => void;
   error: string | null;
@@ -440,6 +442,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const changePassword = async (currentPassword: string, newPassword: string) => {
+    try {
+      setError(null);
+
+      const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.token}`,
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to change password');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while changing password';
+      setError(errorMessage);
+      throw error;
+    }
+  };
+
+  const deleteAccount = async (password: string, confirmationText: string) => {
+    try {
+      setError(null);
+
+      const response = await fetch(`${API_BASE_URL}/auth/delete-account`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${state.token}`,
+        },
+        body: JSON.stringify({ password, confirmationText }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to delete account');
+      }
+
+      // Clear localStorage and logout user
+      localStorage.removeItem('token');
+      dispatch({ type: 'AUTH_LOGOUT' });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An error occurred while deleting account';
+      setError(errorMessage);
+      throw error;
+    }
+  };
+
   const value: AuthContextType = {
     ...state,
     login,
@@ -448,6 +504,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     resendVerification,
     forgotPassword,
     resetPassword,
+    changePassword,
+    deleteAccount,
     logout,
     clearError,
     error,

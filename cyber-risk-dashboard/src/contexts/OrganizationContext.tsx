@@ -35,6 +35,12 @@ interface OrganizationProject {
   companyScale: string;
   averageRisk: number;
   riskLevel: string;
+  mitigationStrategy?: {
+    initialRisk: number;
+    finalRisk: number;
+    totalReduction: number;
+    totalReductionPercentage: number;
+  };
 }
 
 interface OrganizationMetrics {

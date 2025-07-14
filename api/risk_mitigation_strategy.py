@@ -174,14 +174,21 @@ class RiskMitigationAnalyzer:
             logger.error(f"Error processing SHAP values: {str(e)}")
             return pd.DataFrame()
     
-    def generate_mitigation_strategy(self, user_data: List[int]) -> Dict[str, Any]:
+    def generate_mitigation_strategy(self, user_data: List[int], current_risk_override: float = None) -> Dict[str, Any]:
         """Generate complete risk mitigation strategy matching original algorithm"""
         try:
             set_seed(0)  # For reproducibility
             
             # Get initial setup
             df_sample = self.preprocess_user_data(user_data)
-            initial_risk = self.calculate_risk_score(df_sample)
+            
+            # Use current_risk_override if provided, otherwise calculate it
+            if current_risk_override is not None:
+                initial_risk = current_risk_override
+                logger.debug(f"Using provided current_risk_override: {initial_risk}")
+            else:
+                initial_risk = self.calculate_risk_score(df_sample)
+                logger.debug(f"Calculated initial_risk: {initial_risk}")
             
             # Generate dynamic feature groups based on SHAP analysis (matching original algorithm)
             all_feature_lists = self._generate_dynamic_feature_lists(user_data)
@@ -548,12 +555,19 @@ class RiskMitigationAnalyzer:
         return descriptions.get(feature_code, f'Optimize {self._get_feature_name(feature_code)} configuration for improved security')
     
     def calculate_single_recommendation_risk_reduction(self, user_data: List[int], feature_group: str, feature_name: str, 
-                                                      current_option: str, recommended_option: str) -> Dict[str, float]:
+                                                      current_option: str, recommended_option: str, current_risk_override: float = None) -> Dict[str, float]:
         """Calculate risk reduction for a single recommendation"""
         try:
             # Preprocess current user data to get baseline
             current_df = self.preprocess_user_data(user_data)
-            current_risk = self.calculate_risk_score(current_df)
+            
+            # Use current_risk_override if provided, otherwise calculate it
+            if current_risk_override is not None:
+                current_risk = current_risk_override
+                logger.debug(f"Using provided current_risk_override: {current_risk}")
+            else:
+                current_risk = self.calculate_risk_score(current_df)
+                logger.debug(f"Calculated current_risk: {current_risk}")
             
             # Apply the specific recommendation change
             modified_df = current_df.copy()

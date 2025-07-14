@@ -59,6 +59,7 @@ import PersonIcon from '@mui/icons-material/Person';
 import AddIcon from '@mui/icons-material/Add';
 import HistoryIcon from '@mui/icons-material/History';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import DeveloperModeIcon from '@mui/icons-material/DeveloperMode';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
@@ -81,6 +82,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { RiskMitigationSection } from '../components/risk-mitigation';
 import { riskMitigationService } from '../services/riskMitigationService';
 import type { RiskMitigationRecommendation as ServiceRecommendation } from '../services/riskMitigationService';
+import { useLocation } from 'react-router-dom';
 
 interface ProjectInfo {
   // Section 1: Basic Project Information
@@ -457,8 +459,11 @@ const TypingAnimation = styled(Box)(({ theme }) => ({
 
 const RiskQuantification = () => {
   const { isAdmin } = useAuth();
+  const location = useLocation();
   const [activeSection, setActiveSection] = useState(0);
   const [slideDirection, setSlideDirection] = useState(0); // -1 for left, 1 for right
+  const [isLoadingProject, setIsLoadingProject] = useState(false);
+  const [loadedProjectName, setLoadedProjectName] = useState<string | null>(null);
   const [projectInfo, setProjectInfo] = useState<ProjectInfo>({
     projectDuration: '', projectType: '', hasCyberLegalTeam: '', companyScale: '', projectPhase: '',
     layer1Teams: '', layer2Teams: '', layer3Teams: '', teamOverlap: '', hasITTeam: '', devicesWithFirewall: '', networkType: '',
@@ -533,6 +538,11 @@ const RiskQuantification = () => {
   const [enhancedDescriptions, setEnhancedDescriptions] = useState<Map<string, ServiceRecommendation>>(new Map());
   const [loadingRecommendations, setLoadingRecommendations] = useState<Set<string>>(new Set());
   const [allRecommendationsLoaded, setAllRecommendationsLoaded] = useState<boolean>(false);
+  
+  // Original values tracking for revert functionality
+  const [originalRecommendationValues, setOriginalRecommendationValues] = useState<Map<string, string>>(new Map());
+  const [revertRiskGains, setRevertRiskGains] = useState<Map<string, number>>(new Map());
+  const [calculatingRevertRisk, setCalculatingRevertRisk] = useState<Set<string>>(new Set());
 
   // Changeable properties state
   const [changeableProperties, setChangeableProperties] = useState<ChangeableProperty[]>([
@@ -609,6 +619,90 @@ const RiskQuantification = () => {
     'What compliance standards apply to my project?'
   ]);
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
+
+  // Load project data from localStorage if coming from ProjectDetails
+  useEffect(() => {
+    const checkForLoadedProject = async () => {
+      const urlParams = new URLSearchParams(location.search);
+      if (urlParams.get('loadProject') === 'true') {
+        setIsLoadingProject(true);
+        try {
+          const loadedData = localStorage.getItem('loadedProjectData');
+          if (loadedData) {
+            const projectData = JSON.parse(loadedData);
+            
+            // Load project info
+            if (projectData.projectInfo) {
+              setProjectInfo(projectData.projectInfo);
+              setLoadedProjectName(projectData.projectName || 'Loaded Project');
+            }
+            
+            // Load risk results
+            if (projectData.riskResults) {
+              setRiskResults(projectData.riskResults);
+            }
+            
+            // Load mitigation strategy
+            if (projectData.mitigationStrategy) {
+              setRiskMitigationStrategy(projectData.mitigationStrategy);
+              // Load enhanced descriptions
+              loadAllEnhancedDescriptions(projectData.mitigationStrategy);
+            }
+            
+            // Load conversations
+            if (projectData.conversations && projectData.conversations.length > 0) {
+              setConversations(projectData.conversations);
+            }
+            
+            // Load applied recommendations
+            if (projectData.appliedRecommendations && Array.isArray(projectData.appliedRecommendations)) {
+              setAppliedRecommendations(new Set(projectData.appliedRecommendations));
+            }
+            
+            // Load locked recommendations
+            if (projectData.lockedRecommendations && Array.isArray(projectData.lockedRecommendations)) {
+              setLockedRecommendations(new Set(projectData.lockedRecommendations));
+            }
+            
+            // Load enhanced descriptions
+            if (projectData.enhancedDescriptions && Array.isArray(projectData.enhancedDescriptions)) {
+              const enhancedMap = new Map();
+              projectData.enhancedDescriptions.forEach((item: any) => {
+                const { key, ...data } = item;
+                enhancedMap.set(key, data);
+              });
+              setEnhancedDescriptions(enhancedMap);
+            }
+            
+            // Load selected round
+            if (typeof projectData.selectedRound === 'number') {
+              setSelectedRound(projectData.selectedRound);
+            }
+            
+            // Load changeable properties
+            if (projectData.changeableProperties && Array.isArray(projectData.changeableProperties)) {
+              setChangeableProperties(projectData.changeableProperties);
+            }
+            
+            // Clean up localStorage
+            localStorage.removeItem('loadedProjectData');
+            
+            // Update URL to remove the loadProject parameter
+            const newUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, newUrl);
+            
+            console.log('✅ Project loaded successfully from ProjectDetails');
+          }
+        } catch (error) {
+          console.error('❌ Error loading project data:', error);
+        } finally {
+          setIsLoadingProject(false);
+        }
+      }
+    };
+
+    checkForLoadedProject();
+  }, [location.search]);
 
   const sections = ['Basic Info', 'Structure', 'Technical', 'Security'];
   const sectionDescriptions = [
@@ -886,360 +980,336 @@ const RiskQuantification = () => {
       const doc = new jsPDF() as ExtendedJsPDF;
       const pageWidth = doc.internal.pageSize.width;
       const pageHeight = doc.internal.pageSize.height;
-      const margin = 20;
+      const margin = 15; // Reduced margin for more content space
       const contentWidth = pageWidth - (margin * 2);
       
-      // Modern color palette
+      // A more sophisticated and mature color palette
       const colors = {
-        primary: [79, 70, 229] as [number, number, number], // Indigo
-        primaryLight: [129, 140, 248] as [number, number, number],
-        secondary: [71, 85, 105] as [number, number, number],
-        accent: [16, 185, 129] as [number, number, number],
-        success: [34, 197, 94] as [number, number, number],
-        warning: [245, 158, 11] as [number, number, number],
-        error: [239, 68, 68] as [number, number, number],
-        critical: [185, 28, 28] as [number, number, number],
-        text: [15, 23, 42] as [number, number, number],
-        textLight: [100, 116, 139] as [number, number, number],
-        background: [248, 250, 252] as [number, number, number],
+          primary: [30, 41, 59] as [number, number, number],      // Slate 900 (Deep Navy/Charcoal)
+          primaryLight: [51, 65, 85] as [number, number, number],   // Slate 700
+          accent: [20, 184, 166] as [number, number, number],      // Teal 500 (Muted & Professional)
+          accentLight: [45, 212, 191] as [number, number, number], // Teal 400
+          text: [15, 23, 42] as [number, number, number],          // Slate 950 (Almost Black)
+          textSecondary: [71, 85, 105] as [number, number, number], // Slate 600
+          background: [241, 245, 249] as [number, number, number],  // Slate 100 (Light Gray)
         white: [255, 255, 255] as [number, number, number],
-        gray: [226, 232, 240] as [number, number, number]
+          success: [22, 163, 74] as [number, number, number],      // Green 600
+          warning: [217, 119, 6] as [number, number, number],      // Amber 600
+          error: [220, 38, 38] as [number, number, number],        // Red 600
       };
-
-      let currentY = margin;
-
-      // Helper function to check if we need a new page
-      const checkPageBreak = (neededSpace: number) => {
-        if (currentY + neededSpace > pageHeight - 50) {
-          doc.addPage();
-          currentY = margin;
-          return true;
-        }
-        return false;
+      
+      // Centralized font settings
+      const fonts = {
+          body: 'helvetica',
+          bold: 'helvetica'
       };
-
-      // Modern header
-      const addModernHeader = (title: string, subtitle?: string) => {
-        checkPageBreak(70);
-        
-        // Header background
+      
+      // Utility to safely handle potentially null/undefined text
+      const safeText = (text: any, fallback = 'N/A'): string => {
+          if (text === undefined || text === null) return fallback;
+          // Keep markdown characters for later processing
+          return String(text).replace(/[^\x20-\x7E\n\r\t*<>]/g, '').trim();
+      };
+      
+      const drawHeaderOnEveryPage = () => {
+          // Header Background
         doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-        doc.rect(0, currentY, pageWidth, 50, 'F');
+          doc.rect(0, 0, pageWidth, 40, 'F');
+          doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+          doc.rect(0, 40, pageWidth, 2, 'F');
         
-        // Title
+          // Logo
         doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
-        doc.setFontSize(20);
-        doc.setFont('helvetica', 'bold');
-        doc.text(title, margin, currentY + 20);
-        
-        // Subtitle
-        if (subtitle) {
-          doc.setFontSize(11);
-          doc.setFont('helvetica', 'normal');
-          doc.text(subtitle, margin, currentY + 35);
-        }
-        
-        currentY += 60;
+          doc.setFont(fonts.bold, 'bold');
+          doc.setFontSize(10);
+          doc.text('CYBER RISK', margin, 20);
+          doc.setFont(fonts.body, 'normal');
+          doc.setFontSize(8);
+          doc.text('ASSESSMENT PLATFORM', margin, 27);
+          
+          // Main Title
+          doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
+          doc.setFont(fonts.bold, 'bold');
+          doc.setFontSize(16);
+          doc.text('Cybersecurity Risk Assessment', pageWidth / 2, 25, { align: 'center' });
+          
+          // Report Metadata (Right Aligned - No Overlap)
+          const reportDate = new Date().toLocaleDateString('en-US', {
+              year: 'numeric', month: 'long', day: 'numeric'
+          });
+          doc.setFont(fonts.body, 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
+          doc.text(`Project: ${safeText(projectName || 'Cyber Risk Assessment')}`, pageWidth - margin, 15, { align: 'right' });
+          doc.text(`Date: ${reportDate}`, pageWidth - margin, 22, { align: 'right' });
+          doc.text(`Report ID: ${Date.now().toString().slice(-8)}`, pageWidth - margin, 29, { align: 'right' });
       };
-
-      // Section header
-      const addSectionHeader = (text: string) => {
-        checkPageBreak(35);
-        
-        // Section background
-        doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
-        doc.rect(margin, currentY, contentWidth, 25, 'F');
-        
-        // Accent line
-        doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
-        doc.rect(margin, currentY, 4, 25, 'F');
-        
-        // Section text
-        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-        doc.setFontSize(12);
-        doc.setFont('helvetica', 'bold');
-        doc.text(text, margin + 15, currentY + 16);
-        
-        currentY += 35;
-      };
-
-      // Field row with modern styling
-      const addFieldRow = (label: string, value: string, isHighlight = false) => {
-        checkPageBreak(18);
-        
-        // Background for highlighted items
-        if (isHighlight) {
-          doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
-          doc.rect(margin + 5, currentY - 2, contentWidth - 10, 14, 'F');
-        }
-        
-        // Label
-        doc.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(label.toUpperCase(), margin + 10, currentY + 8);
-        
-        // Value
-        const displayValue = value || 'Not specified';
-        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        
-        // Value background
-        doc.setFillColor(colors.gray[0], colors.gray[1], colors.gray[2]);
-        doc.rect(margin + 100, currentY + 1, contentWidth - 115, 10, 'F');
-        doc.text(displayValue, margin + 105, currentY + 8);
-        
-        currentY += 18;
-      };
-
-      // Main Header
-      addModernHeader(
-        'CYBER RISK ASSESSMENT',
-        'Comprehensive Security Analysis & Risk Evaluation Report'
-      );
-
-      // Executive Summary
-      doc.setFillColor(colors.white[0], colors.white[1], colors.white[2]);
-      doc.rect(margin, currentY, contentWidth, 40, 'F');
-      doc.setDrawColor(colors.gray[0], colors.gray[1], colors.gray[2]);
-      doc.rect(margin, currentY, contentWidth, 40);
       
-      doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('EXECUTIVE SUMMARY', margin + 10, currentY + 15);
+      const drawFooterOnEveryPage = (data: any) => {
+          const pageCount = (doc as any).internal.getNumberOfPages();
+          doc.setFont(fonts.body, 'normal');
+          doc.setFontSize(8);
+          doc.setTextColor(colors.textSecondary[0], colors.textSecondary[1], colors.textSecondary[2]);
+          
+          // Footer Line
+          doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+          doc.setLineWidth(0.5);
+          doc.line(margin, pageHeight - 18, pageWidth - margin, pageHeight - 18);
+          
+          // Footer Text
+          const footerText = 'Confidential | Professional Security Assessment';
+          doc.text(footerText, margin, pageHeight - 10);
+          const pageNumText = `Page ${data.pageNumber} of ${pageCount}`;
+          doc.text(pageNumText, pageWidth - margin, pageHeight - 10, { align: 'right' });
+      };
       
-      const currentDate = new Date().toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+      const addSectionHeader = (title: string, subtitle: string) => {
+          const currentY = (doc as any).lastAutoTable?.finalY || 50;
+          
+          autoTable(doc, {
+              startY: currentY + 15,
+              body: [[{ content: title, styles: { cellPadding: { top: 8, bottom: 2, left: 8 } } }]],
+              theme: 'plain',
+              styles: {
+                  font: fonts.bold,
+                  fontStyle: 'bold',
+                  fontSize: 14,
+                  textColor: colors.primary,
+              },
+              didDrawCell: (data: any) => {
+                  doc.setFillColor(colors.accent[0], colors.accent[1], colors.accent[2]);
+                  doc.rect(margin, data.cell.y, 3, data.cell.height, 'F');
+              },
+          });
+          
+          autoTable(doc, {
+              startY: (doc as any).lastAutoTable.finalY,
+              body: [[{ content: subtitle, styles: { cellPadding: { top: 0, bottom: 8, left: 8 } } }]],
+              theme: 'plain',
+              styles: {
+                  font: fonts.body,
+                  fontSize: 10,
+                  textColor: colors.textSecondary,
+              },
+          });
+      };
+      
+      // Calculate current risk after applied recommendations
+      const calculateCurrentRisk = () => {
+          if (!riskMitigationStrategy) return calculateAverageRisk().score;
+          
+          // Use initial risk as baseline
+          return (riskMitigationStrategy.initialRisk || 0) * 100;
+      };
+      
+      // --- START PDF GENERATION ---
+      
+      const startY = 50;
+      
+      autoTable(doc, {
+          startY: startY,
+          body: [
+              [
+                  { content: `Initial Risk\n${((riskMitigationStrategy?.initialRisk || 0) * 100).toFixed(1)}%`, styles: { halign: 'center' } },
+                  { content: `Current Risk\n${calculateCurrentRisk().toFixed(1)}%`, styles: { halign: 'center' } },
+                  { content: `Projected Risk\n${((riskMitigationStrategy?.finalRisk || 0) * 100).toFixed(1)}%`, styles: { halign: 'center' } },
+              ]
+          ],
+          theme: 'grid',
+          styles: { font: fonts.bold, fontSize: 12, fontStyle: 'bold', cellPadding: 8, valign: 'middle' },
+          didDrawCell: (data) => {
+              if (data.section === 'body') {
+                  doc.setFont(fonts.body, 'normal');
+                  doc.setFontSize(10);
+                  doc.setTextColor(...colors.textSecondary);
+                  const textParts = data.cell.text[0].split('\n');
+                  if (textParts.length > 1) {
+                      doc.text(textParts[1], data.cell.x + data.cell.width / 2, data.cell.y + 15, { align: 'center' });
+                  }
+              }
+          },
+          didDrawPage: (data) => {
+              drawHeaderOnEveryPage();
+              drawFooterOnEveryPage(data);
+          }
       });
       
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
-      doc.text(`Report Generated: ${currentDate}`, margin + 10, currentY + 25);
-      
-      doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-      doc.text('This assessment evaluates cybersecurity risks across organizational,', margin + 10, currentY + 32);
-      doc.text('technical, and procedural domains.', margin + 10, currentY + 37);
-      
-      currentY += 50;
-
-      // Project Overview Section
-      addSectionHeader('PROJECT OVERVIEW');
-      addFieldRow('Project Duration', projectInfo.projectDuration);
-      addFieldRow('Project Type', projectInfo.projectType);
-      addFieldRow('Current Phase', projectInfo.projectPhase);
-      addFieldRow('Organization Size', projectInfo.companyScale, true);
-      addFieldRow('Legal Team', projectInfo.hasCyberLegalTeam);
-
-      // Organizational Structure Section
-      addSectionHeader('ORGANIZATIONAL STRUCTURE');
-      let hasTeamData = false;
-      for (let i = 1; i <= 3; i++) {
-        const value = projectInfo[`layer${i}Teams` as keyof ProjectInfo];
-        if (value && value !== 'na') {
-          addFieldRow(`Layer ${i} Teams`, value);
-          hasTeamData = true;
-        }
+      // Risk Analysis Section
+      if (riskResults) {
+          addSectionHeader('Risk Analysis', 'Detailed breakdown of identified threats');
+          const riskBody = Object.entries(riskResults)
+              .filter(([key]) => !['_id', 'id'].includes(key))
+              .map(([riskType, analysis]: [string, any]) => {
+                  const score = analysis?.score || 0;
+                  return [
+                      riskType.replace(/([A-Z])/g, ' $1').trim(),
+                      `${score.toFixed(1)}%`,
+                      analysis?.level?.toUpperCase() || 'N/A',
+                      score >= 70 ? 'High' : score >= 40 ? 'Medium' : 'Low',
+                  ];
+              });
+          autoTable(doc, {
+              startY: (doc as any).lastAutoTable.finalY + 5,
+              head: [['Risk Category', 'Score', 'Level', 'Priority']],
+              body: riskBody,
+              theme: 'striped',
+              headStyles: { fillColor: colors.primary },
+              didDrawCell: (data) => {
+                  if (data.section === 'body' && data.column.index === 3) {
+                      const priority = data.cell.raw;
+                      doc.setTextColor(...(priority === 'High' ? colors.error : priority === 'Medium' ? colors.warning : colors.success));
+                      doc.setFont(fonts.body, 'bold');
+                  }
+              },
+          });
       }
-      if (!hasTeamData) {
-        doc.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
-        doc.setFontSize(10);
-        doc.text('No team structure data specified', margin + 10, currentY);
-        currentY += 15;
+      
+      // --- MITIGATION ROADMAP (ENHANCED) ---
+      if (riskMitigationStrategy?.rounds && riskMitigationStrategy.rounds.length > 0) {
+          addSectionHeader('Implementation Roadmap', 'Phased approach to risk mitigation');
+          
+          riskMitigationStrategy.rounds.forEach((round: any, index: number) => {
+              // Create enhanced descriptions map for quick lookup
+              const enhancedMap = new Map();
+              Array.from(enhancedDescriptions.entries()).forEach(([key, value]) => {
+                  enhancedMap.set(key, value);
+              });
+              
+              // Swap first and second recommendations if there are at least 2
+              const recommendations = round.recommendations || [];
+              const reorderedRecommendations = [...recommendations];
+              if (reorderedRecommendations.length >= 2) {
+                  [reorderedRecommendations[0], reorderedRecommendations[1]] = [reorderedRecommendations[1], reorderedRecommendations[0]];
+              }
+              
+              const recommendationsBody = reorderedRecommendations.map((rec: any, recIndex: number) => {
+                  const isApplied = appliedRecommendations.has(`${rec.featureGroup}-${rec.recommendedOption}`);
+                  
+                  // Get risk reduction from enhanced descriptions
+                  const enhancedKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
+                  const enhanced = enhancedMap.get(enhancedKey);
+                  const riskReduction = enhanced?.calculatedRiskReduction || rec.riskReductionPercentage || 0;
+                  
+                  return [
+                      recIndex + 1,
+                      safeText(rec.featureName),
+                      safeText(rec.currentOption),
+                      safeText(rec.recommendedOption),
+                      isApplied ? 'Applied' : 'Pending',
+                      `${riskReduction.toFixed(1)}%`
+                  ];
+              });
+              
+              // A single table with phase header first, then column headers, then recommendations
+              autoTable(doc, {
+                  startY: (doc as any).lastAutoTable.finalY + 10,
+                  body: [
+                      // Phase header row first, spanning all 6 columns
+                      [{
+                          content: `Phase ${round.roundNumber || index + 1}    Risk: ${((round.currentRisk || 0) * 100).toFixed(1)}% ➔ ${((round.projectedRisk || 0) * 100).toFixed(1)}%`,
+                          colSpan: 6,
+                          styles: {
+                              fillColor: colors.primaryLight,
+                              textColor: colors.white,
+                              fontStyle: 'bold',
+                              halign: 'left'
+                          }
+                      }],
+                      // Column header row
+                      [
+                          { content: '#', styles: { fillColor: colors.textSecondary, textColor: colors.white, fontStyle: 'bold' } },
+                          { content: 'Recommendation', styles: { fillColor: colors.textSecondary, textColor: colors.white, fontStyle: 'bold' } },
+                          { content: 'Current', styles: { fillColor: colors.textSecondary, textColor: colors.white, fontStyle: 'bold' } },
+                          { content: 'Proposed', styles: { fillColor: colors.textSecondary, textColor: colors.white, fontStyle: 'bold' } },
+                          { content: 'Status', styles: { fillColor: colors.textSecondary, textColor: colors.white, fontStyle: 'bold' } },
+                          { content: 'Reduction', styles: { fillColor: colors.textSecondary, textColor: colors.white, fontStyle: 'bold' } }
+                      ],
+                      // The rest of the body is the recommendations
+                      ...recommendationsBody
+                  ],
+                  theme: 'grid',
+                  columnStyles: {
+                      0: { cellWidth: 8, halign: 'center' },
+                      1: { cellWidth: 60 },
+                      4: { halign: 'center' },
+                      5: { halign: 'right' }
+                  },
+                  didDrawCell: (data: any) => {
+                      if (data.section === 'body' && data.row.index > 0) { // Skip the phase header row
+                          if (data.column.index === 4) { // Status column
+                              const status = data.cell.text[0];
+                              doc.setTextColor(...(status === 'Applied' ? colors.success : colors.warning));
+                              doc.setFont(fonts.body, 'bold');
+                          }
+                      }
+                  }
+              });
+          });
       }
-      if (projectInfo.teamOverlap) {
-        addFieldRow('Team Overlap', projectInfo.teamOverlap, true);
+      
+      // --- CONSULTATION HISTORY (ENHANCED) ---
+      if (conversations && conversations.length > 0) {
+          addSectionHeader('Consultation History', 'Complete log of AI-powered analysis');
+          
+          // Simplified text rendering - just clean the text and let autoTable handle it
+          const cleanText = (text: string) => {
+              return text
+                  .replace(/<strong>(.*?)<\/strong>/g, '$1')
+                  .replace(/<em>(.*?)<\/em>/g, '$1')
+                  .replace(/\*\*(.*?)\*\*/g, '$1')
+                  .replace(/\*(.*?)\*/g, '$1')
+                  .replace(/[^\x20-\x7E\n\r\t]/g, '')
+                  .trim();
+          };
+          
+          conversations.forEach((conversation: any) => {
+              autoTable(doc, {
+                  startY: (doc as any).lastAutoTable.finalY + 10,
+                  body: [[safeText(conversation.title)]],
+                  theme: 'plain',
+                  styles: { font: fonts.bold, fontSize: 11, fillColor: colors.background, cellPadding: 8 }
+              });
+              
+              const messagesBody = (conversation.messages || []).map((msg: any) => ({
+                  sender: msg.sender === 'user' ? 'User' : 'AI Assistant',
+                  message: cleanText(safeText(msg.text, 'No content.'))
+              }));
+              
+              autoTable(doc, {
+                  startY: (doc as any).lastAutoTable.finalY,
+                  body: messagesBody.map((m: { sender: string; message: string }) => [m.sender, m.message]),
+                  theme: 'striped',
+                  styles: { fontSize: 9, cellPadding: 4, valign: 'top' },
+                  headStyles: { fillColor: colors.primaryLight, textColor: colors.white, fontSize: 10, fontStyle: 'bold' },
+                  columnStyles: {
+                      0: { cellWidth: 25, fontStyle: 'bold' },
+                  },
+                  didDrawCell: (data: any) => {
+                      if (data.section === 'body') {
+                          if (data.column.index === 0) { // Speaker column
+                              const isUser = data.cell.text[0] === 'User';
+                              const colorToUse = isUser ? colors.primary : colors.accent;
+                              doc.setTextColor(colorToUse[0], colorToUse[1], colorToUse[2]);
+                          }
+                      }
+                  }
+              });
+          });
       }
-
-      // Technical Infrastructure Section
-      addSectionHeader('TECHNICAL INFRASTRUCTURE');
-      addFieldRow('IT Team', projectInfo.hasITTeam);
-      addFieldRow('Network Architecture', projectInfo.networkType, true);
-      addFieldRow('Firewall Coverage', projectInfo.devicesWithFirewall);
-      addFieldRow('Phishing Resilience', projectInfo.phishingFailRate);
-
-      // Security Practices Section
-      addSectionHeader('SECURITY PRACTICES');
-      addFieldRow('Governance Maturity', projectInfo.governanceLevel, true);
-      addFieldRow('Multi-Factor Auth', projectInfo.usesMFA);
-      addFieldRow('Password Policy', projectInfo.allowPasswordReuse);
-
-      // Start Risk Analysis on new page
-      doc.addPage();
-      currentY = margin;
-
-      // Risk Analysis Header
-      addModernHeader('RISK ANALYSIS RESULTS', 'Detailed Security Risk Assessment');
-
-      // Risk Score Overview
-      doc.setFillColor(colors.white[0], colors.white[1], colors.white[2]);
-      doc.rect(margin, currentY, contentWidth, 30, 'F');
-      doc.setDrawColor(colors.gray[0], colors.gray[1], colors.gray[2]);
-      doc.rect(margin, currentY, contentWidth, 30);
       
-      doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.text('RISK SCORE OVERVIEW', margin + 10, currentY + 20);
-      
-      currentY += 40;
-
-      // Risk table header
-      doc.setFillColor(colors.primary[0], colors.primary[1], colors.primary[2]);
-      doc.rect(margin, currentY, contentWidth, 15, 'F');
-      
-      doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'bold');
-      doc.text('Risk Category', margin + 10, currentY + 10);
-      doc.text('Score', margin + 80, currentY + 10);
-      doc.text('Level', margin + 120, currentY + 10);
-      
-      currentY += 20;
-
-      // Risk rows
-      Object.entries(riskResults).forEach(([risk, analysis], index) => {
-        checkPageBreak(25);
-        
-        const riskColor = analysis.level === 'critical' ? colors.critical :
-                         analysis.level === 'high' ? colors.error :
-                         analysis.level === 'medium' ? colors.warning :
-                         colors.success;
-        
-        // Row background
-        const rowColor = index % 2 === 0 ? colors.background : colors.white;
-        doc.setFillColor(rowColor[0], rowColor[1], rowColor[2]);
-        doc.rect(margin, currentY - 2, contentWidth, 18, 'F');
-        
-        // Risk category
-        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-        doc.setFontSize(10);
-        doc.setFont('helvetica', 'normal');
-        const riskName = risk.charAt(0).toUpperCase() + risk.slice(1).replace(/([A-Z])/g, ' $1');
-        doc.text(riskName, margin + 10, currentY + 8);
-        
-        // Progress bar background
-        const barWidth = 30;
-        const barHeight = 8;
-        const barX = margin + 80;
-        const barY = currentY + 2;
-        
-        doc.setFillColor(colors.gray[0], colors.gray[1], colors.gray[2]);
-        doc.rect(barX, barY, barWidth, barHeight, 'F');
-        
-        // Progress bar fill
-        doc.setFillColor(riskColor[0], riskColor[1], riskColor[2]);
-        const fillWidth = (analysis.score / 100) * barWidth;
-        doc.rect(barX, barY, fillWidth, barHeight, 'F');
-        
-        // Score text
-        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-        doc.setFontSize(8);
-        doc.text(`${analysis.score}%`, barX, currentY + 14);
-        
-        // Risk level
-        doc.setTextColor(riskColor[0], riskColor[1], riskColor[2]);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(analysis.level.toUpperCase(), margin + 120, currentY + 8);
-        
-        currentY += 20;
-      });
-
-      // Recommendations Section
-      currentY += 20;
-      addSectionHeader('STRATEGIC RECOMMENDATIONS');
-      
-      const recommendations = [
-        { priority: 'HIGH', text: 'Implement Zero Trust Architecture', impact: 'Critical security enhancement' },
-        { priority: 'HIGH', text: 'Deploy Advanced Threat Detection', impact: 'Real-time threat monitoring' },
-        { priority: 'MED', text: 'Enhance Security Training Program', impact: 'Reduce human error risks' },
-        { priority: 'MED', text: 'Regular Penetration Testing', impact: 'Proactive vulnerability assessment' },
-        { priority: 'LOW', text: 'Update Incident Response Plan', impact: 'Improved crisis management' }
-      ];
-
-      recommendations.forEach((rec, index) => {
-        checkPageBreak(20);
-        
-        const priorityColor = rec.priority === 'HIGH' ? colors.error :
-                             rec.priority === 'MED' ? colors.warning : colors.accent;
-        
-        // Recommendation background
-        doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
-        doc.rect(margin + 5, currentY - 2, contentWidth - 10, 16, 'F');
-        
-        // Priority badge
-        doc.setFillColor(priorityColor[0], priorityColor[1], priorityColor[2]);
-        doc.rect(margin + 10, currentY + 2, 20, 8, 'F');
-        doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
-        doc.setFontSize(7);
-        doc.setFont('helvetica', 'bold');
-        doc.text(rec.priority, margin + 13, currentY + 7);
-        
-        // Recommendation text
-        doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(`${index + 1}. ${rec.text}`, margin + 40, currentY + 6);
-        
-        // Impact description
-        doc.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-        doc.text(rec.impact, margin + 40, currentY + 12);
-        
-        currentY += 20;
-      });
-
-      // Footer for all pages
       const pageCount = (doc as any).internal.getNumberOfPages();
       for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
-        
-        // Footer background
-        doc.setFillColor(colors.background[0], colors.background[1], colors.background[2]);
-        doc.rect(0, pageHeight - 25, pageWidth, 25, 'F');
-        
-        // Footer content
-        doc.setTextColor(colors.textLight[0], colors.textLight[1], colors.textLight[2]);
-        doc.setFontSize(8);
-        doc.setFont('helvetica', 'normal');
-        
-        // Company branding
-        doc.setFont('helvetica', 'bold');
-        doc.text('CYBER RISK DASHBOARD', margin, pageHeight - 12);
-        
-        // Page number (centered)
-        doc.setFont('helvetica', 'normal');
-        doc.text(
-          `Page ${i} of ${pageCount}`,
-          pageWidth / 2 - 10,
-          pageHeight - 12
-        );
-        
-        // Date (right)
-        doc.text(
-          new Date().toLocaleDateString(), 
-          pageWidth - margin - 30, 
-          pageHeight - 12
-        );
-        
-        // Decorative line
-        doc.setDrawColor(colors.accent[0], colors.accent[1], colors.accent[2]);
-        doc.setLineWidth(1);
-        doc.line(margin, pageHeight - 20, pageWidth - margin, pageHeight - 20);
+          drawFooterOnEveryPage({ pageNumber: i });
       }
-
-      // Save the PDF
-      doc.save('cyber-risk-assessment-modern.pdf');
+      
+      const cleanProjectName = safeText(projectName || 'assessment', 'assessment').toLowerCase().replace(/\s/g, '-');
+      const dateStr = new Date().toISOString().split('T')[0];
+      doc.save(`cybersecurity-assessment-${cleanProjectName}-${dateStr}.pdf`);
+      
     } catch (error) {
-      console.error('Error generating PDF:', error);
+      console.error('Enhanced PDF Generation Error:', error);
+      alert(`Failed to generate premium PDF report. See console for details.`);
     }
   };
 
@@ -1375,8 +1445,8 @@ const RiskQuantification = () => {
     </motion.div>
   );
 
-  // Calculate average risk score
-  const calculateAverageRisk = (): { score: number; level: 'low' | 'medium' | 'high' | 'critical' } => {
+  // Helper function to calculate average risk from any risk results object - SINGLE SOURCE OF TRUTH
+  const calculateAverageRiskFromResults = (riskResults: RiskResults): { score: number; level: 'low' | 'medium' | 'high' | 'critical' } => {
     const scores = Object.values(riskResults).map(r => r.score);
     const avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
     
@@ -1387,6 +1457,11 @@ const RiskQuantification = () => {
     else level = 'critical';
     
     return { score: avgScore, level };
+  };
+
+  // Calculate average risk score - this is the reliable calculation used consistently
+  const calculateAverageRisk = (): { score: number; level: 'low' | 'medium' | 'high' | 'critical' } => {
+    return calculateAverageRiskFromResults(riskResults);
   };
 
   // Prepare data for spider chart
@@ -1497,7 +1572,7 @@ const RiskQuantification = () => {
               Risk Analysis Results
             </Typography>
 
-            {/* Average Risk Score */}
+            {/* Overall Risk Score - matches Risk Mitigation Strategy for consistency */}
             <Box sx={{ width: '100%', maxWidth: 600, mb: 4 }}>
               <Typography variant="h6" gutterBottom align="center">
                 Overall Risk Assessment
@@ -1532,7 +1607,7 @@ const RiskQuantification = () => {
                           textShadow: '1px 1px 2px rgba(0,0,0,0.7)'
                         }}
                       >
-                        {avgRisk.level.toUpperCase()} RISK
+                        {showRiskNumbers ? `${Math.round(avgRisk.score)}%` : `${avgRisk.level.toUpperCase()} RISK`}
                       </Typography>
                     </Box>
                   </Box>
@@ -1641,7 +1716,21 @@ const RiskQuantification = () => {
                   gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)' },
                   gap: 2,
                   maxWidth: 600,
-                  mx: 'auto'
+                  mx: 'auto',
+                  // Center the last row items for both layouts
+                  '& > :nth-child(4)': {
+                    // 4th item in 3-column layout: offset to center the last row
+                    gridColumnStart: { sm: 1 }
+                  },
+                  '& > :nth-child(5)': {
+                    // 5th item: center in both layouts
+                    gridColumn: { xs: '1 / 3', sm: '2 / 3' },
+                    justifySelf: { xs: 'center', sm: 'center' }
+                  },
+                  // Center the last row container for 3-column layout
+                  '& > :nth-child(4) ~ *': {
+                    justifySelf: 'center'
+                  }
             }}>
               {Object.entries(riskResults).map(([risk, analysis]) => (
                 <RiskIndicator key={risk} risk={risk} analysis={analysis} />
@@ -2439,70 +2528,249 @@ const RiskQuantification = () => {
   // Chatbot functions
   const currentConversation = conversations.find(conv => conv.id === currentConversationId);
 
-  // Calculate individual risk reductions for recommendations
+  // Calculate individual risk reductions for recommendations by simulating their application
   const calculateIndividualRiskReductions = async (recommendations: RiskMitigationRecommendation[]) => {
     try {
-      // Convert project info to model input
-      const modelInput = [
-        ['<=3m', '3-6m', '6-12m', '12-24m', '>24m'].indexOf(projectInfo.projectDuration),
-        ['transportation', 'government', 'healthcare', 'commercial', 'residential', 'other'].indexOf(projectInfo.projectType),
-        ['yes', 'no', 'unsure'].indexOf(projectInfo.hasCyberLegalTeam),
-        ['<=30', '31-60', '61-100', '101-150', '>150'].indexOf(projectInfo.companyScale),
-        ['planning', 'design', 'construction', 'maintenance', 'demolition'].indexOf(projectInfo.projectPhase),
-        ['<=10', '11-20', '21-30', '31-40', '>40', 'na'].indexOf(projectInfo.layer1Teams),
-        ['<=10', '11-20', '21-30', '31-40', '>40', 'na'].indexOf(projectInfo.layer2Teams),
-        ['<=10', '11-20', '21-30', '31-40', '>40', 'na'].indexOf(projectInfo.layer3Teams),
-        ['<=20', '21-40', '41-60', '61-80', '81-100'].indexOf(projectInfo.teamOverlap),
-        ['yes', 'no', 'unsure'].indexOf(projectInfo.hasITTeam),
-        ['<=20', '21-40', '41-60', '61-80', '81-100'].indexOf(projectInfo.devicesWithFirewall),
-        ['public', 'private', 'both'].indexOf(projectInfo.networkType),
-        ['<=20', '21-40', '41-60', '61-80', '81-100'].indexOf(projectInfo.phishingFailRate),
-        ['level1', 'level2', 'level3', 'level4', 'level5'].indexOf(projectInfo.governanceLevel),
-        ['yes', 'no'].indexOf(projectInfo.allowPasswordReuse),
-        ['yes', 'no'].indexOf(projectInfo.usesMFA)
-      ];
-
-      // Calculate risk reduction for each recommendation
+      console.log('🧮 Calculating individual risk reductions by simulation...');
+      
+      // Get current baseline risk
+      const currentRisk = calculateAverageRisk().score; // This is the consistent risk calculation
+      console.log(`📊 Current baseline risk: ${currentRisk.toFixed(1)}%`);
+      
+      // Calculate risk reduction for each recommendation by simulation
       const promises = recommendations.map(async (rec) => {
         try {
-          // Skip if feature group is not in expected format
-          if (!rec.featureGroup || rec.featureGroup === '1.1') {
-            console.warn(`Skipping risk reduction calculation for ${rec.featureName} - invalid feature group: ${rec.featureGroup}`);
+          console.log(`🔄 Simulating application of: ${rec.featureName}`);
+          
+          // Map feature groups to form fields (same mapping as in applyRecommendation)
+          const fieldMapping: { [key: string]: keyof ProjectInfo } = {
+            '1.1': 'projectDuration',
+            '1.2': 'projectType',
+            '1.3': 'hasCyberLegalTeam',
+            '1.4': 'companyScale',
+            '1.5': 'projectPhase',
+            '2.1.1': 'layer1Teams',
+            '2.1.2': 'layer2Teams', 
+            '2.1.3': 'layer3Teams',
+            '2.2': 'teamOverlap',
+            '3.1': 'hasITTeam',
+            '3.2': 'devicesWithFirewall',
+            '3.3': 'networkType',
+            '3.4': 'phishingFailRate',
+            '4.1': 'governanceLevel',
+            '4.2': 'allowPasswordReuse',
+            '4.3': 'usesMFA'
+          };
+
+          const fieldKey = fieldMapping[rec.featureGroup];
+          if (!fieldKey) {
+            console.warn(`No field mapping found for feature group: ${rec.featureGroup}`);
             return;
           }
-          
-          console.log(`Calculating risk reduction for ${rec.featureName}:`, {
-            featureGroup: rec.featureGroup,
-            currentOption: rec.currentOption,
-            recommendedOption: rec.recommendedOption
-          });
-          
-          const result = await riskMitigationService.calculateRecommendationRiskReduction({
-            user_data: modelInput,
-            featureGroup: rec.featureGroup,
-            featureName: rec.featureName,
-            currentOption: rec.currentOption,
-            recommendedOption: rec.recommendedOption,
-          });
-          
+
+          // Convert recommended option to form value (same logic as in applyRecommendation)
+          const getFormValue = (featureGroup: string, recommendedOption: string): string => {
+            switch (featureGroup) {
+              case '1.1': // Project Duration
+                if (recommendedOption === '≤3m') return '<=3m';
+                if (recommendedOption === '3-6m') return '3-6m';
+                if (recommendedOption === '6-12m') return '6-12m';
+                if (recommendedOption === '12-24m') return '12-24m';
+                if (recommendedOption === '>24m') return '>24m';
+                return '';
+              case '1.2': // Project Type
+                if (recommendedOption === 'Transportation') return 'transportation';
+                if (recommendedOption === 'Government') return 'government';
+                if (recommendedOption === 'Healthcare') return 'healthcare';
+                if (recommendedOption === 'Commercial') return 'commercial';
+                if (recommendedOption === 'Residential') return 'residential';
+                if (recommendedOption === 'Other') return 'other';
+                return '';
+              case '1.3': // Legal Team
+                return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
+              case '1.4': // Company Scale
+                if (recommendedOption === '≤30') return '<=30';
+                if (recommendedOption === '31-60') return '31-60';
+                if (recommendedOption === '61-100') return '61-100';
+                if (recommendedOption === '101-150') return '101-150';
+                if (recommendedOption === '>150') return '>150';
+                return '';
+              case '1.5': // Project Phase
+                if (recommendedOption === 'Planning') return 'planning';
+                if (recommendedOption === 'Design') return 'design';
+                if (recommendedOption === 'Construction') return 'construction';
+                if (recommendedOption === 'Maintenance') return 'maintenance';
+                if (recommendedOption === 'Demolition') return 'demolition';
+                return '';
+              case '2.1.1': // Layer 1 Teams
+              case '2.1.2': // Layer 2 Teams  
+              case '2.1.3': // Layer 3 Teams
+                if (recommendedOption === '>40') return '>40';
+                if (recommendedOption === '31-40') return '31-40';
+                if (recommendedOption === '21-30') return '21-30';
+                if (recommendedOption === '11-20') return '11-20';
+                if (recommendedOption === '≤10') return '<=10';
+                if (recommendedOption === 'N/A') return 'na';
+                return 'na';
+              case '2.2': // Team Overlap
+                if (recommendedOption === '≤20%') return '<=20';
+                if (recommendedOption === '21-40%') return '21-40';
+                if (recommendedOption === '41-60%') return '41-60';
+                if (recommendedOption === '61-80%') return '61-80';
+                if (recommendedOption === '81-100%') return '81-100';
+                return '';
+              case '3.1': // IT Team
+                return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
+              case '3.2': // Firewall Coverage
+              case '3.4': // Phishing Failure Rate
+                if (recommendedOption === '≤20%') return '<=20';
+                if (recommendedOption === '21-40%') return '21-40';
+                if (recommendedOption === '41-60%') return '41-60';
+                if (recommendedOption === '61-80%') return '61-80';
+                if (recommendedOption === '81-100%') return '81-100';
+                return '';
+              case '3.3': // Network Type
+                if (recommendedOption === 'Private') return 'private';
+                if (recommendedOption === 'Public') return 'public';
+                if (recommendedOption === 'Both') return 'both';
+                return '';
+              case '4.1': // Governance Level
+                if (recommendedOption === 'Level 5') return 'level5';
+                if (recommendedOption === 'Level 4') return 'level4';
+                if (recommendedOption === 'Level 3') return 'level3';
+                if (recommendedOption === 'Level 2') return 'level2';
+                if (recommendedOption === 'Level 1') return 'level1';
+                return '';
+              case '4.2': // Password Reuse
+                return recommendedOption === 'Not Allowed' ? 'no' : 'yes';
+              case '4.3': // MFA
+                return recommendedOption === 'Yes' ? 'yes' : 'no';
+              default:
+                return '';
+            }
+          };
+
+          // Create simulated project info with this recommendation applied
+          const newValue = getFormValue(rec.featureGroup, rec.recommendedOption);
+          if (!newValue) {
+            console.warn(`Could not convert recommended option: ${rec.recommendedOption} for group ${rec.featureGroup}`);
+            return;
+          }
+
+          const simulatedProjectInfo = {
+            ...projectInfo,
+            [fieldKey]: newValue
+          };
+
+          // Calculate risk with the simulated change
+          let newRiskResults;
+          if (useRandomResults) {
+            // For random results, just use a slight variation
+            newRiskResults = generateRandomResults();
+          } else {
+            // Use the actual risk calculation API
+            newRiskResults = await riskApiService.calculateRisk(simulatedProjectInfo);
+          }
+
+          // Calculate the new average risk using the exact same algorithm as calculateAverageRisk()
+          const newAverageRisk = calculateAverageRiskFromResults(newRiskResults).score;
+
+          // Calculate the actual risk reduction
+          const actualRiskReduction = currentRisk - newAverageRisk;
+          const riskReductionPercentage = (actualRiskReduction / currentRisk) * 100;
+
+          console.log(`✅ ${rec.featureName}: ${currentRisk.toFixed(1)}% → ${newAverageRisk.toFixed(1)}% = -${actualRiskReduction.toFixed(1)} pts (${riskReductionPercentage.toFixed(1)}% reduction)`);
+
           // Update the recommendation with calculated risk reduction
           const cacheKey = `${rec.featureGroup}-${rec.featureName}-${rec.description}`;
           setEnhancedDescriptions(prev => {
             const existing = prev.get(cacheKey) || rec;
             return new Map(prev.set(cacheKey, {
               ...existing,
-              calculatedRiskReduction: result.riskReductionPercentage
+              calculatedRiskReduction: riskReductionPercentage // Store as percentage for consistency
             }));
           });
+          
         } catch (error) {
-          console.error(`Error calculating risk reduction for ${rec.featureName}:`, error);
-          console.error('Recommendation details:', rec);
+          console.error(`Error simulating ${rec.featureName}:`, error);
         }
       });
 
       await Promise.all(promises);
+      console.log('🎯 Individual risk reduction calculations completed');
+      
     } catch (error) {
-      console.error('Error calculating individual risk reductions:', error);
+      console.error('Error calculating individual risk reductions by simulation:', error);
+    }
+  };
+
+  // Calculate the risk gain when reverting a recommendation
+  const calculateRevertRiskGain = async (recommendation: RiskMitigationRecommendation): Promise<number> => {
+    const recommendationId = `${recommendation.featureGroup}-${recommendation.recommendedOption}`;
+    const originalValue = originalRecommendationValues.get(recommendationId);
+    
+    if (!originalValue) {
+      console.warn(`No original value found for recommendation: ${recommendationId}`);
+      return 0;
+    }
+    
+    try {
+      console.log(`🔄 Calculating revert risk gain for: ${recommendation.featureName}`);
+      
+      // Create a temporary project info with the original value restored
+      const tempProjectInfo = { ...projectInfo };
+      
+      // Map feature groups to form fields
+      const fieldMapping: { [key: string]: keyof ProjectInfo } = {
+        '1.1': 'projectDuration',
+        '1.2': 'projectType',
+        '1.3': 'hasCyberLegalTeam',
+        '1.4': 'companyScale',
+        '1.5': 'projectPhase',
+        '2.1.1': 'layer1Teams',
+        '2.1.2': 'layer2Teams', 
+        '2.1.3': 'layer3Teams',
+        '2.2': 'teamOverlap',
+        '3.1': 'hasITTeam',
+        '3.2': 'devicesWithFirewall',
+        '3.3': 'networkType',
+        '3.4': 'phishingFailRate',
+        '4.1': 'governanceLevel',
+        '4.2': 'allowPasswordReuse',
+        '4.3': 'usesMFA'
+      };
+
+      const fieldKey = fieldMapping[recommendation.featureGroup];
+      if (!fieldKey) {
+        console.warn(`No field mapping found for feature group: ${recommendation.featureGroup}`);
+        return 0;
+      }
+
+      // Restore the original value
+      tempProjectInfo[fieldKey] = originalValue;
+      
+      // Calculate current risk (with recommendation applied)
+      const currentRisk = calculateAverageRisk().score;
+      
+      // Calculate risk with original value restored
+      let riskWithOriginal: number;
+      if (useRandomResults) {
+        const randomResults = generateRandomResults();
+        riskWithOriginal = calculateAverageRiskFromResults(randomResults).score;
+      } else {
+        const riskResults = await riskApiService.calculateRisk(tempProjectInfo);
+        riskWithOriginal = calculateAverageRiskFromResults(riskResults).score;
+      }
+      
+      // Calculate risk gain (increase when reverting)
+      const riskGain = riskWithOriginal - currentRisk;
+      console.log(`📊 Risk gain for ${recommendation.featureName}: ${riskGain.toFixed(1)} percentage points`);
+      
+      return Math.max(0, riskGain);
+      
+    } catch (error) {
+      console.error(`Error calculating revert risk gain for ${recommendation.featureName}:`, error);
+      return 0;
     }
   };
 
@@ -2532,9 +2800,9 @@ const RiskQuantification = () => {
           const success = await service.initialize(projectInfo, riskResults, riskMitigationStrategy || undefined);
           setIsChatInitialized(success);
           
-          // Update the default conversation with context-aware message
+          // Only update the default conversation if it has just the initial message
           setConversations(prev => prev.map(conv => {
-            if (conv.id === 1) {
+            if (conv.id === 1 && conv.messages.length === 1) {
               return {
                 ...conv,
                 messages: [{
@@ -2553,9 +2821,9 @@ const RiskQuantification = () => {
           const success = await service.initialize();
           setIsChatInitialized(success);
           
-          // Update with generic message
+          // Only update the default conversation if it has just the initial message
           setConversations(prev => prev.map(conv => {
-            if (conv.id === 1) {
+            if (conv.id === 1 && conv.messages.length === 1) {
               return {
                 ...conv,
                 messages: [{
@@ -2574,7 +2842,7 @@ const RiskQuantification = () => {
     };
 
     initializeChat();
-  }, [riskResults, riskMitigationStrategy, isFormComplete()]);
+  }, [riskResults, riskMitigationStrategy, projectInfo.projectType]);
 
   // Generate new recommended questions based on conversation history
   const updateRecommendedQuestions = async (conversationMessages: Message[]) => {
@@ -2611,7 +2879,11 @@ const RiskQuantification = () => {
       timestamp: new Date(),
     };
 
-    // Update UI immediately with user message
+    // Store user input before clearing
+    const userInputText = chatInput;
+    setChatInput('');
+    
+    // Update UI immediately with user message and preserve it
     const updatedMessages = [...currentConversation.messages, userMessage];
     setConversations(prev => prev.map(conv => {
       if (conv.id === currentConversationId) {
@@ -2623,9 +2895,6 @@ const RiskQuantification = () => {
       }
       return conv;
     }));
-
-    const userInputText = chatInput;
-    setChatInput('');
     
     // Show typing animation
     setIsAiTyping(true);
@@ -2635,7 +2904,7 @@ const RiskQuantification = () => {
       const aiResponseText = await chatbotService.sendMessage(userInputText);
       
       const aiMessage: Message = {
-        id: currentConversation.messages.length + 2,
+        id: updatedMessages.length + 1, // Use updatedMessages length for correct ID
         text: aiResponseText,
         sender: 'ai',
         timestamp: new Date(),
@@ -2663,7 +2932,7 @@ const RiskQuantification = () => {
       
       // Add error message to conversation
       const errorMessage: Message = {
-        id: currentConversation.messages.length + 2,
+        id: updatedMessages.length + 1, // Use updatedMessages length for correct ID
         text: "I apologize, but I encountered an error processing your request. Please try again.",
         sender: 'ai',
         timestamp: new Date(),
@@ -2789,13 +3058,16 @@ const RiskQuantification = () => {
         ['yes', 'no'].indexOf(updatedProjectInfo.usesMFA)
       ];
 
-      // Call the mitigation strategy API
+      // Call the mitigation strategy API with consistent current risk
       const response = await fetch('http://localhost:8000/mitigation-strategy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ user_data: modelInput }),
+        body: JSON.stringify({ 
+          user_data: modelInput,
+          current_risk: calculateAverageRisk().score / 100  // Use consistent risk baseline
+        }),
       });
 
       if (!response.ok) {
@@ -2931,13 +3203,16 @@ const RiskQuantification = () => {
         ['yes', 'no'].indexOf(projectInfo.usesMFA)
       ];
 
-      // Call the mitigation strategy API
+      // Call the mitigation strategy API with consistent current risk
       const response = await fetch('http://localhost:8000/mitigation-strategy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ user_data: modelInput }),
+        body: JSON.stringify({ 
+          user_data: modelInput,
+          current_risk: calculateAverageRisk().score / 100  // Use consistent risk baseline
+        }),
       });
 
       if (!response.ok) {
@@ -2979,6 +3254,22 @@ const RiskQuantification = () => {
       
       // Load ALL enhanced descriptions in one API call
       loadAllEnhancedDescriptions(convertedStrategy);
+      
+      // Calculate simulated projected risk for each round
+      const updatedRounds = await Promise.all(convertedStrategy.rounds.map(async (round) => {
+        const simulatedProjectedRisk = await calculateProjectedRisk(round);
+        return {
+          ...round,
+          projectedRisk: simulatedProjectedRisk / 100, // Convert back to decimal for consistency
+          simulatedProjectedRisk: simulatedProjectedRisk // Keep percentage for display
+        };
+      }));
+      
+      // Update strategy with simulated projected risks
+      setRiskMitigationStrategy(prev => prev ? {
+        ...prev,
+        rounds: updatedRounds
+      } : prev);
       
       // Reset applied recommendations when manually refreshing
       setAppliedRecommendations(new Set());
@@ -3318,6 +3609,13 @@ const RiskQuantification = () => {
 
       const newValue = getFormValue(recommendation.featureGroup, recommendation.recommendedOption);
       
+      // Track original value before applying recommendation (only if not already tracked)
+      if (!originalRecommendationValues.has(recommendationId)) {
+        const currentValue = projectInfo[fieldKey];
+        setOriginalRecommendationValues(prev => new Map(prev).set(recommendationId, currentValue));
+        console.log(`📝 Tracking original value for ${recommendation.featureName}: ${currentValue}`);
+      }
+      
       // Update the form
       const updatedProjectInfo = {
         ...projectInfo,
@@ -3378,6 +3676,124 @@ const RiskQuantification = () => {
       }
     } catch (error) {
       console.error('Error applying recommendation:', error);
+      setApplyingRecommendation(null);
+    }
+  };
+
+  // Revert recommendation back to original value
+  const revertRecommendation = async (recommendation: RiskMitigationRecommendation) => {
+    const recommendationId = `${recommendation.featureGroup}-${recommendation.recommendedOption}`;
+    const originalValue = originalRecommendationValues.get(recommendationId);
+    
+    if (!originalValue) {
+      console.warn(`No original value found for recommendation: ${recommendationId}`);
+      return;
+    }
+    
+    setApplyingRecommendation(recommendationId);
+    
+    try {
+      // Map feature groups to form fields
+      const fieldMapping: { [key: string]: keyof ProjectInfo } = {
+        '1.1': 'projectDuration',
+        '1.2': 'projectType',
+        '1.3': 'hasCyberLegalTeam',
+        '1.4': 'companyScale',
+        '1.5': 'projectPhase',
+        '2.1.1': 'layer1Teams',
+        '2.1.2': 'layer2Teams', 
+        '2.1.3': 'layer3Teams',
+        '2.2': 'teamOverlap',
+        '3.1': 'hasITTeam',
+        '3.2': 'devicesWithFirewall',
+        '3.3': 'networkType',
+        '3.4': 'phishingFailRate',
+        '4.1': 'governanceLevel',
+        '4.2': 'allowPasswordReuse',
+        '4.3': 'usesMFA'
+      };
+
+      const fieldKey = fieldMapping[recommendation.featureGroup];
+      if (!fieldKey) {
+        console.warn(`No field mapping found for feature group: ${recommendation.featureGroup}`);
+        return;
+      }
+
+      console.log(`🔄 Reverting ${recommendation.featureName} back to original value: ${originalValue}`);
+      
+      // Update the form back to original value
+      const updatedProjectInfo = {
+        ...projectInfo,
+        [fieldKey]: originalValue
+      };
+      
+      setProjectInfo(updatedProjectInfo);
+
+      // Update risk scores
+      setIsLoading(true);
+      setApiError(null);
+      
+      try {
+        if (useRandomResults) {
+          const results = generateRandomResults();
+          setRiskResults(results);
+        } else {
+          const results = await riskApiService.calculateRisk(updatedProjectInfo);
+          setRiskResults(results);
+        }
+        
+        // Remove recommendation from applied set
+        const persistentId = `${recommendation.featureGroup}-${recommendation.currentOption}-to-${recommendation.recommendedOption}`;
+        setAppliedRecommendations(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(recommendationId);
+          newSet.delete(persistentId);
+          return newSet;
+        });
+        
+        // Remove from original values tracking
+        setOriginalRecommendationValues(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(recommendationId);
+          return newMap;
+        });
+        
+        // Update the recommendation in the strategy to reflect it's reverted
+        if (riskMitigationStrategy) {
+          const updatedStrategy = {
+            ...riskMitigationStrategy,
+            rounds: riskMitigationStrategy.rounds.map(round => ({
+              ...round,
+              recommendations: round.recommendations.map(rec => {
+                if (rec.featureGroup === recommendation.featureGroup) {
+                  return {
+                    ...rec,
+                    currentOption: recommendation.currentOption // Revert to original currentOption
+                  };
+                }
+                return rec;
+              })
+            }))
+          };
+          setRiskMitigationStrategy(updatedStrategy);
+          
+          // Recalculate risk reductions for all recommendations with the reverted project state
+          console.log('🔄 Recalculating risk reductions after reverting recommendation...');
+          const allRecommendations = updatedStrategy.rounds.flatMap(round => round.recommendations);
+          await calculateIndividualRiskReductions(allRecommendations);
+        }
+        
+        console.log(`✅ Successfully reverted ${recommendation.featureName} to original state`);
+        
+      } catch (error) {
+        console.error('Risk recalculation failed:', error);
+        setApiError((error as Error).message || 'Failed to recalculate risk scores');
+      } finally {
+        setIsLoading(false);
+        setApplyingRecommendation(null);
+      }
+    } catch (error) {
+      console.error('Error reverting recommendation:', error);
       setApplyingRecommendation(null);
     }
   };
@@ -3707,6 +4123,32 @@ Provide all ${allRecommendations.length} analyses:`;
     const isAlreadySet = rec.currentOption === rec.recommendedOption;
     const isApplying = applyingRecommendation === recommendationId;
     const enhancedRecommendation = enhancedDescriptions.get(cacheKey);
+    const hasOriginalValue = originalRecommendationValues.has(recommendationId);
+    const originalValue = originalRecommendationValues.get(recommendationId);
+    const canRevert = isApplied && hasOriginalValue && !isLocked;
+    
+    // Local state for hover and risk gain calculation
+    const [isHovering, setIsHovering] = useState(false);
+    const [riskGain, setRiskGain] = useState<number | null>(null);
+    const [calculatingRisk, setCalculatingRisk] = useState(false);
+    
+    // Calculate risk gain on hover for revert functionality
+    const handleHover = async (hovering: boolean) => {
+      setIsHovering(hovering);
+      
+      if (hovering && canRevert && riskGain === null && !calculatingRisk) {
+        setCalculatingRisk(true);
+        try {
+          const gain = await calculateRevertRiskGain(rec);
+          setRiskGain(gain);
+        } catch (error) {
+          console.error('Error calculating risk gain:', error);
+          setRiskGain(0);
+        } finally {
+          setCalculatingRisk(false);
+        }
+      }
+    };
 
     const getCostDisplay = (costLevel?: number) => {
       if (!costLevel) return '$$';
@@ -3898,14 +4340,31 @@ Provide all ${allRecommendations.length} analyses:`;
                 </Box>
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 2 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Chip label="Current" size="small" variant="outlined" />
-                    <Typography variant="body2">{rec.currentOption}</Typography>
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Chip label="Recommended" size="small" color="primary" />
-                    <Typography variant="body2" fontWeight="medium">{rec.recommendedOption}</Typography>
-                  </Box>
+                  {isApplied && hasOriginalValue ? (
+                    // Show "Original -> Current" when applied
+                    <>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip label="Original" size="small" variant="outlined" color="default" />
+                        <Typography variant="body2">{originalValue}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip label="Current" size="small" color="success" />
+                        <Typography variant="body2" fontWeight="medium">{rec.recommendedOption}</Typography>
+                      </Box>
+                    </>
+                  ) : (
+                    // Show "Current -> Recommended" when not applied
+                    <>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip label="Current" size="small" variant="outlined" />
+                        <Typography variant="body2">{rec.currentOption}</Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Chip label="Recommended" size="small" color="primary" />
+                        <Typography variant="body2" fontWeight="medium">{rec.recommendedOption}</Typography>
+                      </Box>
+                    </>
+                  )}
                 </Box>
 
                 <Typography variant="body2" color="text.secondary">
@@ -3922,10 +4381,10 @@ Provide all ${allRecommendations.length} analyses:`;
                             Risk Reduction Impact
                           </Typography>
                           <Typography variant="body2" sx={{ mb: 1 }}>
-                            This shows the absolute percentage point reduction in risk.
+                            This shows the absolute percentage point reduction in risk for this specific recommendation.
                           </Typography>
                           <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
-                            For example: If your risk goes from 60% to 30%, that's a reduction of 30 percentage points (not 50%).
+                            For example: If your current risk is 85% and this recommendation reduces it by 25%, that's a reduction of 21.3 percentage points (25% of 85%).
                           </Typography>
                         </Box>
                       }
@@ -3933,7 +4392,7 @@ Provide all ${allRecommendations.length} analyses:`;
                     >
                       <Chip
                         icon={<TrendingDownIcon />}
-                        label={`-${(rec.calculatedRiskReduction || rec.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction || 0).toFixed(1)} pts`}
+                        label={`-${((riskMitigationStrategy?.rounds.find(r => r.recommendations.includes(rec))?.currentRisk || 0) * 100 * (rec.calculatedRiskReduction || rec.riskReductionPercentage || enhancedRecommendation?.calculatedRiskReduction || 0) / 100).toFixed(1)} pts`}
                         size="small"
                         sx={{
                           bgcolor: (() => {
@@ -3975,6 +4434,50 @@ Provide all ${allRecommendations.length} analyses:`;
                     </Tooltip>
                   </Box>
                 ) : null}
+                
+                {/* Risk Gain Display for Already Set Recommendations */}
+                {isAlreadySet && canRevert && (
+                  <Box sx={{ mt: 2 }}>
+                    <Tooltip 
+                      title={
+                        <Box>
+                          <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                            Risk Gain if Reverted
+                          </Typography>
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            This shows the risk increase if you revert back to the original setting.
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
+                            Hovering over the button will show this value once calculated.
+                          </Typography>
+                        </Box>
+                      }
+                      arrow
+                    >
+                      <Chip
+                        icon={<TrendingUpIcon />}
+                        label={
+                          calculatingRisk ? 'Calculating...' : 
+                          riskGain !== null ? `+${riskGain.toFixed(1)} pts` : 
+                          'Hover to calculate'
+                        }
+                        size="small"
+                        sx={{
+                          bgcolor: 'rgba(244, 67, 54, 0.1)',
+                          color: '#f44336',
+                          borderColor: '#f44336',
+                          borderWidth: 1,
+                          borderStyle: 'solid',
+                          fontWeight: 'bold',
+                          cursor: 'help',
+                          '& .MuiChip-icon': {
+                            color: '#f44336'
+                          }
+                        }}
+                      />
+                    </Tooltip>
+                  </Box>
+                )}
               </Box>
 
               {/* Action Buttons - Right Side */}
@@ -3989,8 +4492,18 @@ Provide all ${allRecommendations.length} analyses:`;
                   variant={isAlreadySet ? "outlined" : isApplied ? "outlined" : "contained"}
                   color={isAlreadySet ? "success" : isApplied ? "warning" : "primary"}
                   size="small"
-                  disabled={isLocked || isAlreadySet || isApplying}
-                  onClick={() => toggleRecommendation(rec)}
+                  disabled={isLocked || (isAlreadySet && !canRevert) || isApplying}
+                  onClick={() => {
+                    if (isApplied && canRevert) {
+                      revertRecommendation(rec);
+                    } else if (isAlreadySet && canRevert) {
+                      revertRecommendation(rec);
+                    } else if (!isApplied && !isAlreadySet) {
+                      applyRecommendation(rec);
+                    }
+                  }}
+                  onMouseEnter={() => handleHover(true)}
+                  onMouseLeave={() => handleHover(false)}
                   startIcon={
                     isApplying ? <CircularProgress size={16} /> :
                     isAlreadySet ? <CheckIcon /> : 
@@ -4007,11 +4520,19 @@ Provide all ${allRecommendations.length} analyses:`;
                         bgcolor: 'rgba(255, 152, 0, 0.1)',
                         borderColor: 'warning.dark',
                       }
+                    }),
+                    ...(isAlreadySet && canRevert && isHovering && {
+                      borderColor: 'warning.main',
+                      color: 'warning.main',
+                      '&:hover': {
+                        bgcolor: 'rgba(255, 152, 0, 0.1)',
+                        borderColor: 'warning.dark',
+                      }
                     })
                   }}
                 >
                   {isApplying ? (isApplied ? 'Reverting...' : 'Applying...') :
-                   isAlreadySet ? 'Already Set' : 
+                   isAlreadySet ? (isHovering && canRevert ? 'Revert' : 'Already Set') : 
                    isApplied ? 'Revert' : 'Apply Change'}
                 </Button>
 
@@ -4581,144 +5102,7 @@ Please be specific to construction industry cybersecurity and consider my projec
     }
   };
 
-  // --- NEW: Mock mitigation strategy generator ---
-  const generateMockMitigationStrategy = (): RiskMitigationStrategy => {
-    // Helper to distribute reduction among recommendations
-    const distributeReduction = (total: number, count: number) => {
-      // Give higher reduction to first rec, then spread remainder
-      if (count === 1) return [total];
-      if (count === 2) return [Math.round(total * 0.6 * 100) / 100, Math.round(total * 0.4 * 100) / 100];
-      // For 3+, first gets 45%, second 35%, rest split
-      const first = Math.round(total * 0.45 * 100) / 100;
-      const second = Math.round(total * 0.35 * 100) / 100;
-      const rest = total - first - second;
-      const restEach = Math.round((rest / (count - 2)) * 100) / 100;
-      return [first, second, ...Array(count - 2).fill(restEach)];
-    };
-    return {
-      initialRisk: 0.92,
-      finalRisk: 0.22,
-      totalReduction: 0.7,
-      totalReductionPercentage: 76.1,
-      implementationPriority: 'high',
-      rounds: [
-        {
-          roundNumber: 1,
-          features: ['Firewall Coverage', 'MFA', 'Vendor Security'],
-          currentRisk: 0.92,
-          projectedRisk: 0.61,
-          riskReduction: 0.31,
-          reductionPercentage: 33.7,
-          recommendations: (() => {
-            const recs = [
-              {
-                featureGroup: '3.2',
-                featureName: 'Firewall Coverage',
-                currentOption: 'Partial',
-                recommendedOption: 'Full',
-                optionIndex: 2,
-                description: 'Upgrade all devices to have firewall protection.',
-                enhancedDescription: 'Ensures all endpoints are protected from network threats.',
-                costLevel: 2,
-                importance: 'High',
-              },
-              {
-                featureGroup: '4.3',
-                featureName: 'MFA',
-                currentOption: 'No',
-                recommendedOption: 'Yes',
-                optionIndex: 1,
-                description: 'Enable multi-factor authentication for all users.',
-                enhancedDescription: 'Adds a strong layer of defense against account compromise.',
-                costLevel: 1,
-                importance: 'High',
-              },
-              {
-                featureGroup: '3.5',
-                featureName: 'Vendor Security',
-                currentOption: 'Basic',
-                recommendedOption: 'Advanced',
-                optionIndex: 2,
-                description: 'Require advanced security controls for all vendors.',
-                enhancedDescription: 'Reduces supply chain risk from third parties.',
-                costLevel: 3,
-                importance: 'Medium',
-              },
-            ];
-            const reductions = distributeReduction(33.7, recs.length);
-            return recs.map((rec, i) => ({
-              ...rec,
-              riskReduction: Math.round((reductions[i] / 100) * 0.92 * 1000) / 1000, // relative to initial risk
-              riskReductionPercentage: reductions[i],
-            }));
-          })(),
-        },
-        {
-          roundNumber: 2,
-          features: ['Password Reuse Policy', 'Security Training Effectiveness'],
-          currentRisk: 0.61,
-          projectedRisk: 0.33,
-          riskReduction: 0.28,
-          reductionPercentage: 45.9,
-          recommendations: (() => {
-            const recs = [
-              {
-                featureGroup: '4.2',
-                featureName: 'Password Reuse Policy',
-                currentOption: 'Yes',
-                recommendedOption: 'No',
-                optionIndex: 1,
-                description: 'Disallow password reuse across all project accounts.',
-                enhancedDescription: 'Restricting password reuse helps prevent credential stuffing attacks.',
-                costLevel: 1,
-                importance: 'High',
-              },
-              {
-                featureGroup: '3.4',
-                featureName: 'Security Training Effectiveness',
-                currentOption: '61-80%',
-                recommendedOption: '<=20',
-                optionIndex: 0,
-                description: 'Improve security awareness training to reduce phishing test failure rate.',
-                enhancedDescription: 'Better training will lower the risk of successful phishing attacks.',
-                costLevel: 2,
-                importance: 'Medium',
-              },
-            ];
-            const reductions = distributeReduction(45.9, recs.length);
-            return recs.map((rec, i) => ({
-              ...rec,
-              riskReduction: Math.round((reductions[i] / 100) * 0.61 * 1000) / 1000, // relative to round start
-              riskReductionPercentage: reductions[i],
-            }));
-          })(),
-        },
-        {
-          roundNumber: 3,
-          features: ['Governance Level'],
-          currentRisk: 0.33,
-          projectedRisk: 0.22,
-          riskReduction: 0.11,
-          reductionPercentage: 33.3,
-          recommendations: [
-            {
-              featureGroup: '4.1',
-              featureName: 'Governance Level',
-              currentOption: 'level2',
-              recommendedOption: 'level5',
-              optionIndex: 4,
-              description: 'Elevate governance maturity to exemplary standards.',
-              enhancedDescription: 'Strong governance ensures long-term security and compliance.',
-              costLevel: 3,
-              importance: 'Medium',
-              riskReduction: 0.11,
-              riskReductionPercentage: 33.3,
-            },
-          ],
-        },
-      ],
-    };
-  };
+  // Mock mitigation strategy generator removed - using real API exclusively for accurate 16 outputs over 5 rounds
 
   // --- NEW: Refresh results/strategy when useRandomResults changes ---
   useEffect(() => {
@@ -4731,11 +5115,8 @@ Please be specific to construction industry cybersecurity and consider my projec
         if (useRandomResults) {
           const results = generateRandomResults();
           setRiskResults(results);
-          // Ensure mock mitigation strategy is set in demo mode
-          const mockStrategy = generateMockMitigationStrategy();
-          setRiskMitigationStrategy(mockStrategy);
-          // Ensure enhanced descriptions are loaded for mock strategy
-          await loadAllEnhancedDescriptions(mockStrategy);
+          // Always use real API for mitigation strategy to ensure 16 outputs over 5 rounds
+          await analyzeRiskMitigation();
         } else {
           const results = await riskApiService.calculateRisk(projectInfo);
           setRiskResults(results);
@@ -4978,7 +5359,7 @@ Please be specific to construction industry cybersecurity and consider my projec
       doc.rect(margin, yOffset, contentWidth, 20, 'F');
       
       doc.setTextColor(colors.white[0], colors.white[1], colors.white[2]);
-      doc.setFontSize(12);
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
       doc.text('RISK ASSESSMENT CONTEXT', margin + 10, yOffset + 13);
       
@@ -5154,12 +5535,29 @@ Please be specific to construction industry cybersecurity and consider my projec
     setSaveError(null);
 
     try {
+      // Convert applied recommendations Set to array for database storage
+      const appliedRecommendationsArray = Array.from(appliedRecommendations);
+      
+      // Convert locked recommendations Set to array for database storage
+      const lockedRecommendationsArray = Array.from(lockedRecommendations);
+      
+      // Convert enhanced descriptions Map to array for database storage
+      const enhancedDescriptionsArray = Array.from(enhancedDescriptions.entries()).map(([key, value]) => ({
+        key,
+        ...value
+      }));
+
       const projectData = {
         projectName: projectName.trim(),
         projectInfo,
         riskResults,
         mitigationStrategy: riskMitigationStrategy,
-        conversations
+        conversations,
+        appliedRecommendations: appliedRecommendationsArray,
+        lockedRecommendations: lockedRecommendationsArray,
+        enhancedDescriptions: enhancedDescriptionsArray,
+        selectedRound: selectedRound,
+        changeableProperties: changeableProperties
       };
 
       await projectService.saveProject(projectData);
@@ -5203,6 +5601,151 @@ Please be specific to construction industry cybersecurity and consider my projec
     return recs;
   };
 
+  // Calculate projected risk by simulating all recommendations in a round
+  const calculateProjectedRisk = async (round: RiskMitigationRound): Promise<number> => {
+    try {
+      console.log(`🎯 Calculating projected risk for Round ${round.roundNumber} by simulating all recommendations...`);
+      
+      // Get current baseline risk
+      const currentRisk = calculateAverageRisk().score;
+      
+      // Map feature groups to form fields (same mapping as in applyRecommendation)
+      const fieldMapping: { [key: string]: keyof ProjectInfo } = {
+        '1.1': 'projectDuration',
+        '1.2': 'projectType',
+        '1.3': 'hasCyberLegalTeam',
+        '1.4': 'companyScale',
+        '1.5': 'projectPhase',
+        '2.1.1': 'layer1Teams',
+        '2.1.2': 'layer2Teams', 
+        '2.1.3': 'layer3Teams',
+        '2.2': 'teamOverlap',
+        '3.1': 'hasITTeam',
+        '3.2': 'devicesWithFirewall',
+        '3.3': 'networkType',
+        '3.4': 'phishingFailRate',
+        '4.1': 'governanceLevel',
+        '4.2': 'allowPasswordReuse',
+        '4.3': 'usesMFA'
+      };
+
+      // Function to convert recommended option to form value
+      const getFormValue = (featureGroup: string, recommendedOption: string): string => {
+        switch (featureGroup) {
+          case '1.1': // Project Duration
+            if (recommendedOption === '≤3m') return '<=3m';
+            if (recommendedOption === '3-6m') return '3-6m';
+            if (recommendedOption === '6-12m') return '6-12m';
+            if (recommendedOption === '12-24m') return '12-24m';
+            if (recommendedOption === '>24m') return '>24m';
+            return '';
+          case '1.2': // Project Type
+            if (recommendedOption === 'Transportation') return 'transportation';
+            if (recommendedOption === 'Government') return 'government';
+            if (recommendedOption === 'Healthcare') return 'healthcare';
+            if (recommendedOption === 'Commercial') return 'commercial';
+            if (recommendedOption === 'Residential') return 'residential';
+            if (recommendedOption === 'Other') return 'other';
+            return '';
+          case '1.3': // Legal Team
+            return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
+          case '1.4': // Company Scale
+            if (recommendedOption === '≤30') return '<=30';
+            if (recommendedOption === '31-60') return '31-60';
+            if (recommendedOption === '61-100') return '61-100';
+            if (recommendedOption === '101-150') return '101-150';
+            if (recommendedOption === '>150') return '>150';
+            return '';
+          case '1.5': // Project Phase
+            if (recommendedOption === 'Planning') return 'planning';
+            if (recommendedOption === 'Design') return 'design';
+            if (recommendedOption === 'Construction') return 'construction';
+            if (recommendedOption === 'Maintenance') return 'maintenance';
+            if (recommendedOption === 'Demolition') return 'demolition';
+            return '';
+          case '2.1.1': // Layer 1 Teams
+          case '2.1.2': // Layer 2 Teams  
+          case '2.1.3': // Layer 3 Teams
+            if (recommendedOption === '>40') return '>40';
+            if (recommendedOption === '31-40') return '31-40';
+            if (recommendedOption === '21-30') return '21-30';
+            if (recommendedOption === '11-20') return '11-20';
+            if (recommendedOption === '≤10') return '<=10';
+            if (recommendedOption === 'N/A') return 'na';
+            return 'na';
+          case '2.2': // Team Overlap
+            if (recommendedOption === '≤20%') return '<=20';
+            if (recommendedOption === '21-40%') return '21-40';
+            if (recommendedOption === '41-60%') return '41-60';
+            if (recommendedOption === '61-80%') return '61-80';
+            if (recommendedOption === '81-100%') return '81-100';
+            return '';
+          case '3.1': // IT Team
+            return recommendedOption === 'Yes' ? 'yes' : recommendedOption === 'No' ? 'no' : 'unsure';
+          case '3.2': // Firewall Coverage
+          case '3.4': // Phishing Failure Rate
+            if (recommendedOption === '≤20%') return '<=20';
+            if (recommendedOption === '21-40%') return '21-40';
+            if (recommendedOption === '41-60%') return '41-60';
+            if (recommendedOption === '61-80%') return '61-80';
+            if (recommendedOption === '81-100%') return '81-100';
+            return '';
+          case '3.3': // Network Type
+            if (recommendedOption === 'Private') return 'private';
+            if (recommendedOption === 'Public') return 'public';
+            if (recommendedOption === 'Both') return 'both';
+            return '';
+          case '4.1': // Governance Level
+            if (recommendedOption === 'Level 5') return 'level5';
+            if (recommendedOption === 'Level 4') return 'level4';
+            if (recommendedOption === 'Level 3') return 'level3';
+            if (recommendedOption === 'Level 2') return 'level2';
+            if (recommendedOption === 'Level 1') return 'level1';
+            return '';
+          case '4.2': // Password Reuse
+            return recommendedOption === 'Not Allowed' ? 'no' : 'yes';
+          case '4.3': // MFA
+            return recommendedOption === 'Yes' ? 'yes' : 'no';
+          default:
+            return '';
+        }
+      };
+
+      // Create simulated project info with ALL recommendations applied
+      let simulatedProjectInfo = { ...projectInfo };
+      
+      for (const rec of round.recommendations) {
+        const fieldKey = fieldMapping[rec.featureGroup];
+        if (fieldKey) {
+          const newValue = getFormValue(rec.featureGroup, rec.recommendedOption);
+          if (newValue) {
+            simulatedProjectInfo[fieldKey] = newValue;
+          }
+        }
+      }
+
+      // Calculate risk with all recommendations applied
+      let newRiskResults;
+      if (useRandomResults) {
+        newRiskResults = generateRandomResults();
+      } else {
+        newRiskResults = await riskApiService.calculateRisk(simulatedProjectInfo);
+      }
+
+      // Calculate the projected risk using the exact same algorithm
+      const projectedRisk = calculateAverageRiskFromResults(newRiskResults).score;
+      
+      console.log(`✅ Round ${round.roundNumber} projected risk: ${currentRisk.toFixed(1)}% → ${projectedRisk.toFixed(1)}% (${(currentRisk - projectedRisk).toFixed(1)} point reduction)`);
+      
+      return projectedRisk;
+      
+    } catch (error) {
+      console.error('Error calculating projected risk:', error);
+      // Fallback to API provided value
+      return round.projectedRisk * 100;
+    }
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <motion.div
@@ -5212,7 +5755,25 @@ Please be specific to construction industry cybersecurity and consider my projec
       >
         <Typography variant="h4" component="h1" gutterBottom align="center">
           Risk Quantification
+          {loadedProjectName && (
+            <Chip 
+              label={`Loaded: ${loadedProjectName}`} 
+              color="success" 
+              size="small" 
+              sx={{ ml: 2, verticalAlign: 'middle' }}
+            />
+          )}
         </Typography>
+
+        {/* Project Loading Indicator */}
+        {isLoadingProject && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <CircularProgress size={20} />
+              <Typography>Loading project data from saved project...</Typography>
+            </Box>
+          </Alert>
+        )}
 
         {/* Admin-only Developer Tools */}
         {isAdmin() && (
@@ -5382,6 +5943,7 @@ Please be specific to construction industry cybersecurity and consider my projec
                         isUpdatingStrategy={isUpdatingStrategy}
                         enhancedDescriptions={enhancedDescriptions}
                         loadingRecommendations={loadingRecommendations}
+                        currentRiskScore={calculateAverageRisk().score / 100}
                       />
                     </Box>
                   ) : (

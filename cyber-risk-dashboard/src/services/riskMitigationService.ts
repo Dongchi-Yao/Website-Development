@@ -40,6 +40,7 @@ export interface RecommendationRiskReductionRequest {
   featureName: string;
   currentOption: string;
   recommendedOption: string;
+  current_risk?: number;  // Override for consistent risk calculation
 }
 
 export interface RecommendationRiskReductionResponse {
@@ -81,13 +82,19 @@ class RiskMitigationService {
     }
   }
 
-  async generateMitigationStrategy(projectInfo: ProjectInfo): Promise<RiskMitigationStrategy> {
+  async generateMitigationStrategy(projectInfo: ProjectInfo, currentRisk?: number): Promise<RiskMitigationStrategy> {
     // Convert project info to model input array
     const modelInput = this.convertProjectInfoToModelInput(projectInfo);
     
+    // Prepare request body with optional current risk override
+    const requestBody: any = { user_data: modelInput };
+    if (currentRisk !== undefined) {
+      requestBody.current_risk = currentRisk;
+    }
+    
     return this.makeRequest<RiskMitigationStrategy>('/mitigation-strategy', {
       method: 'POST',
-      body: JSON.stringify({ user_data: modelInput }),
+      body: JSON.stringify(requestBody),
     });
   }
 

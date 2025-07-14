@@ -13,6 +13,7 @@ import About from './pages/About';
 import Contact from './pages/Contact';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import AccountSettings from './pages/AccountSettings';
 
 // Professional color palette
 const colors = {
@@ -158,6 +159,14 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <ProjectDetails />
+                    </ProtectedRoute>
+                  } 
+                />
+                <Route 
+                  path="/account-settings" 
+                  element={
+                    <ProtectedRoute>
+                      <AccountSettings />
                     </ProtectedRoute>
                   } 
                 />

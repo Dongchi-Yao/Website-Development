@@ -17,6 +17,8 @@ import { projectService } from '../services/projectService';
 import { useAuth } from '../contexts/AuthContext';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface SavedProject {
   id: string;
@@ -27,6 +29,12 @@ interface SavedProject {
   companyScale: string;
   averageRisk: number;
   riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  mitigationStrategy?: {
+    initialRisk: number;
+    finalRisk: number;
+    totalReduction: number;
+    totalReductionPercentage: number;
+  };
 }
 
 const Reports = () => {
@@ -34,6 +42,7 @@ const Reports = () => {
   const { user, isManager } = useAuth();
   const { projects: orgProjects, metrics: orgMetrics, fetchOrganizationProjects, isLoading: orgLoading } = useOrganization();
   const [savedProjects, setSavedProjects] = useState<SavedProject[]>([]);
+  const [detailedProjects, setDetailedProjects] = useState<SavedProject[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [useDummyData, setUseDummyData] = useState(false);
@@ -167,11 +176,37 @@ const Reports = () => {
       setError(null);
       const projects = await projectService.getUserProjects();
       setSavedProjects(projects);
+      
+      // Fetch detailed data for metrics calculation
+      await fetchDetailedProjects(projects);
     } catch (err) {
       console.error('Failed to fetch projects:', err);
       setError('Failed to load your projects. Please try again.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchDetailedProjects = async (projects: SavedProject[]) => {
+    try {
+      const detailedProjectsData = await Promise.all(
+        projects.map(async (project) => {
+          try {
+            const detailedProject = await projectService.getProject(project.id);
+            return {
+              ...project,
+              mitigationStrategy: detailedProject.mitigationStrategy || null
+            };
+          } catch (err) {
+            console.warn(`Failed to fetch details for project ${project.id}:`, err);
+            return project; // Return basic project data if detailed fetch fails
+          }
+        })
+      );
+      setDetailedProjects(detailedProjectsData);
+    } catch (err) {
+      console.error('Failed to fetch detailed projects:', err);
+      setDetailedProjects(projects); // Fallback to basic project data
     }
   };
 
@@ -210,10 +245,15 @@ const Reports = () => {
   const currentProjects = useDummyData 
     ? dummyProjects 
     : (viewMode === 'organization' ? orgProjects : savedProjects);
+  
+  // Use detailed projects for metrics calculation when available
+  const metricsProjects = useDummyData 
+    ? dummyProjects 
+    : (viewMode === 'organization' ? orgProjects : detailedProjects);
 
   // Dashboard metrics calculations
   const getDashboardMetrics = () => {
-    if (!currentProjects || currentProjects.length === 0) {
+    if (!metricsProjects || metricsProjects.length === 0) {
       return {
         totalProjects: 0,
         totalRiskMitigated: 0,
@@ -226,30 +266,59 @@ const Reports = () => {
       };
     }
 
-    const totalProjects = currentProjects.length;
+    const totalProjects = metricsProjects.length;
     
-    // Calculate total risk score with proper null checks
-    const totalRiskScore = currentProjects.reduce((sum, project) => {
+    // Calculate total risk score with proper null checks and validation
+    const totalRiskScore = metricsProjects.reduce((sum, project) => {
       const risk = project.averageRisk || 0;
-      return sum + (isNaN(risk) ? 0 : risk);
+      const validRisk = isNaN(risk) ? 0 : Math.min(Math.max(risk, 0), 1); // Clamp between 0 and 1
+      return sum + validRisk;
     }, 0);
     
     const averageRiskScore = totalProjects > 0 ? totalRiskScore / totalProjects : 0;
-    const highRiskProjects = currentProjects.filter(p => 
+    const highRiskProjects = metricsProjects.filter(p => 
       p.riskLevel === 'high' || p.riskLevel === 'critical'
     ).length;
     
-    // Calculate total risk mitigated (percentage reduction from baseline)
-    const totalRiskMitigated = currentProjects.reduce((sum, project) => {
-      const risk = project.averageRisk || 0;
-      const validRisk = isNaN(risk) ? 0 : risk;
-      // Risk score is already 0-1, so mitigated = 1 - risk
-      const riskMitigated = 1 - validRisk;
-      return sum + riskMitigated;
-    }, 0) / totalProjects; // Average risk mitigation across all projects
+    // Calculate actual risk mitigation from saved mitigation strategies
+    const totalRiskMitigated = useDummyData ? 
+      // For dummy data, simulate reasonable mitigation percentages
+      metricsProjects.reduce((sum, project) => {
+        const risk = project.averageRisk || 0;
+        // Simulate mitigation: higher risk projects get more mitigation
+        const simulatedMitigation = risk > 0.6 ? 0.4 : risk > 0.3 ? 0.25 : 0.15;
+        return sum + simulatedMitigation;
+      }, 0) / totalProjects : 
+      // For real data, calculate actual mitigation based on initial vs current risk
+      (() => {
+        const projectsWithMitigation = metricsProjects.filter(project => 
+          project.mitigationStrategy?.initialRisk && project.mitigationStrategy?.finalRisk
+        );
+        
+
+        
+        if (projectsWithMitigation.length === 0) {
+          return 0; // No mitigation has been done
+        }
+        
+        // Calculate actual mitigation based on initial risk vs current risk
+        const totalActualMitigation = projectsWithMitigation.reduce((sum, project) => {
+          const initialRisk = project.mitigationStrategy?.initialRisk || 0;
+          const currentRisk = project.averageRisk || 0;
+          
+          // Only count positive mitigation (risk reduction)
+          if (initialRisk > currentRisk && initialRisk > 0) {
+            const actualMitigationPercentage = ((initialRisk - currentRisk) / initialRisk);
+            return sum + actualMitigationPercentage;
+          }
+          return sum; // No actual mitigation applied
+        }, 0);
+        
+        return totalActualMitigation / projectsWithMitigation.length;
+      })();
 
     // Risk level distribution
-    const riskCounts = currentProjects.reduce((acc, project) => {
+    const riskCounts = metricsProjects.reduce((acc, project) => {
       const level = project.riskLevel || 'unknown';
       acc[level] = (acc[level] || 0) + 1;
       return acc;
@@ -262,7 +331,7 @@ const Reports = () => {
     }));
 
     // Project type distribution
-    const typeCounts = currentProjects.reduce((acc, project) => {
+    const typeCounts = metricsProjects.reduce((acc, project) => {
       const type = project.projectType || 'Unknown';
       acc[type] = (acc[type] || 0) + 1;
       return acc;
@@ -274,7 +343,7 @@ const Reports = () => {
     }));
 
     // Company scale distribution
-    const scaleCounts = currentProjects.reduce((acc, project) => {
+    const scaleCounts = metricsProjects.reduce((acc, project) => {
       const scale = project.companyScale || 'Unknown';
       acc[scale] = (acc[scale] || 0) + 1;
       return acc;
@@ -286,7 +355,7 @@ const Reports = () => {
     }));
 
     // Monthly trends (last 6 months)
-    const monthlyData = currentProjects.reduce((acc, project) => {
+    const monthlyData = metricsProjects.reduce((acc, project) => {
       if (!project.createdAt) return acc;
       
       const month = new Date(project.createdAt).toLocaleString('default', { month: 'short', year: '2-digit' });
@@ -317,6 +386,631 @@ const Reports = () => {
   };
 
   const metrics = getDashboardMetrics();
+
+  // PDF Export Functions
+  const exportUserReportPDF = () => {
+    if (!user) {
+      alert('User data not available for PDF export');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const margin = 15;
+      const contentWidth = pageWidth - (margin * 2);
+
+      // Professional color palette
+      const colors = {
+        primary: [30, 41, 59] as [number, number, number],
+        primaryLight: [51, 65, 85] as [number, number, number],
+        accent: [20, 184, 166] as [number, number, number],
+        accentLight: [45, 212, 191] as [number, number, number],
+        text: [15, 23, 42] as [number, number, number],
+        textSecondary: [71, 85, 105] as [number, number, number],
+        background: [241, 245, 249] as [number, number, number],
+        white: [255, 255, 255] as [number, number, number],
+        success: [22, 163, 74] as [number, number, number],
+        warning: [217, 119, 6] as [number, number, number],
+        error: [220, 38, 38] as [number, number, number],
+      };
+
+      const fonts = {
+        body: 'helvetica',
+        bold: 'helvetica'
+      };
+
+      const safeText = (text: any, fallback = 'N/A'): string => {
+        if (text === undefined || text === null) return fallback;
+        return String(text).replace(/[^\x20-\x7E\n\r\t]/g, '').trim();
+      };
+
+      const drawHeaderOnEveryPage = () => {
+        // Header Background
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, 0, pageWidth, 40, 'F');
+        doc.setFillColor(...colors.accent);
+        doc.rect(0, 40, pageWidth, 2, 'F');
+
+        // Logo
+        doc.setTextColor(...colors.white);
+        doc.setFont(fonts.bold, 'bold');
+        doc.setFontSize(10);
+        doc.text('CYBER RISK', margin, 20);
+        doc.setFont(fonts.body, 'normal');
+        doc.setFontSize(8);
+        doc.text('ASSESSMENT PLATFORM', margin, 27);
+
+        // Main Title
+        doc.setTextColor(...colors.white);
+        doc.setFont(fonts.bold, 'bold');
+        doc.setFontSize(16);
+        doc.text('Personal Risk Assessment Report', pageWidth / 2, 25, { align: 'center' });
+
+        // Report Metadata
+        const reportDate = new Date().toLocaleDateString('en-US', {
+          year: 'numeric', month: 'long', day: 'numeric'
+        });
+        doc.setFont(fonts.body, 'normal');
+        doc.setFontSize(8);
+        doc.text(`User: ${safeText(user.name)}`, pageWidth - margin, 15, { align: 'right' });
+        doc.text(`Date: ${reportDate}`, pageWidth - margin, 22, { align: 'right' });
+        doc.text(`Report ID: ${Date.now().toString().slice(-8)}`, pageWidth - margin, 29, { align: 'right' });
+      };
+
+      const drawFooterOnEveryPage = (data: any) => {
+        const pageCount = (doc as any).internal.getNumberOfPages();
+        doc.setFont(fonts.body, 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...colors.textSecondary);
+
+        // Footer Line
+        doc.setDrawColor(...colors.accent);
+        doc.setLineWidth(0.5);
+        doc.line(margin, pageHeight - 18, pageWidth - margin, pageHeight - 18);
+        
+        // Footer Text
+        const footerText = 'Confidential | Personal Risk Assessment Report';
+        doc.text(footerText, margin, pageHeight - 10);
+        const pageNumText = `Page ${data.pageNumber} of ${pageCount}`;
+        doc.text(pageNumText, pageWidth - margin, pageHeight - 10, { align: 'right' });
+      };
+
+      const addSectionHeader = (title: string, subtitle: string) => {
+        const currentY = (doc as any).lastAutoTable?.finalY || 50;
+        
+        autoTable(doc, {
+          startY: currentY + 15,
+          body: [[{ content: title, styles: { cellPadding: { top: 8, bottom: 2, left: 8 } } }]],
+          theme: 'plain',
+          styles: {
+            font: fonts.bold,
+            fontStyle: 'bold',
+            fontSize: 14,
+            textColor: colors.primary,
+          },
+          didDrawCell: (data: any) => {
+            doc.setFillColor(...colors.accent);
+            doc.rect(margin, data.cell.y, 3, data.cell.height, 'F');
+          },
+        });
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY,
+          body: [[{ content: subtitle, styles: { cellPadding: { top: 0, bottom: 8, left: 8 } } }]],
+          theme: 'plain',
+          styles: {
+            font: fonts.body,
+            fontSize: 10,
+            textColor: colors.textSecondary,
+          },
+        });
+      };
+
+      // Start PDF Generation
+      const startY = 50;
+      
+      // Executive Summary
+      autoTable(doc, {
+        startY: startY,
+        body: [
+          [
+            { content: `Total Projects\n${metrics.totalProjects}`, styles: { halign: 'center' } },
+            { content: `Risk Mitigated\n${metrics.totalRiskMitigated}%`, styles: { halign: 'center' } },
+            { content: `Average Risk\n${metrics.averageRiskScore}%`, styles: { halign: 'center' } },
+            { content: `High Risk Projects\n${metrics.highRiskProjects}`, styles: { halign: 'center' } },
+          ]
+        ],
+        theme: 'grid',
+        styles: { font: fonts.bold, fontSize: 12, fontStyle: 'bold', cellPadding: 8, valign: 'middle' },
+        headStyles: { fillColor: colors.primary, textColor: colors.white },
+        didDrawPage: (data) => {
+          drawHeaderOnEveryPage();
+          drawFooterOnEveryPage(data);
+        }
+      });
+
+      // Risk Distribution
+      if (metrics.riskDistribution.length > 0) {
+        addSectionHeader('Risk Level Distribution', 'Breakdown of risk levels across all projects');
+        const riskBody = metrics.riskDistribution.map((item: any) => [
+          item.name,
+          item.value.toString(),
+          `${((item.value / metrics.totalProjects) * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Risk Level', 'Count', 'Percentage']],
+          body: riskBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primary, textColor: colors.white },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 0) {
+              const riskLevel = data.cell.text[0].toLowerCase();
+              if (riskLevel === 'high' || riskLevel === 'critical') {
+                doc.setTextColor(...colors.error);
+                doc.setFont(fonts.body, 'bold');
+              } else if (riskLevel === 'medium') {
+                doc.setTextColor(...colors.warning);
+                doc.setFont(fonts.body, 'bold');
+              } else {
+                doc.setTextColor(...colors.success);
+                doc.setFont(fonts.body, 'bold');
+              }
+            }
+          }
+        });
+      }
+
+      // Project Type Distribution
+      if (metrics.projectTypeDistribution.length > 0) {
+        addSectionHeader('Project Type Analysis', 'Distribution of projects by type');
+        const typeBody = metrics.projectTypeDistribution.map((item: any) => [
+          item.name,
+          item.value.toString(),
+          `${((item.value / metrics.totalProjects) * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Project Type', 'Count', 'Percentage']],
+          body: typeBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primaryLight, textColor: colors.white }
+        });
+      }
+
+      // Company Scale Distribution
+      if (metrics.companyScaleDistribution.length > 0) {
+        addSectionHeader('Company Scale Analysis', 'Distribution of projects by company scale');
+        const scaleBody = metrics.companyScaleDistribution.map((item: any) => [
+          item.name,
+          item.projects.toString(),
+          `${((item.projects / metrics.totalProjects) * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Company Scale', 'Count', 'Percentage']],
+          body: scaleBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primaryLight, textColor: colors.white }
+        });
+      }
+
+      // Project Details
+      if (currentProjects.length > 0) {
+        addSectionHeader('Project Portfolio', 'Detailed view of all assessed projects');
+        const projectBody = currentProjects.map((project: any) => [
+          safeText(project.projectName),
+          safeText(project.projectType),
+          safeText(project.companyScale),
+          `${((project.averageRisk || 0) * 100).toFixed(1)}%`,
+          (project.riskLevel || 'unknown').toUpperCase(),
+          new Date(project.updatedAt).toLocaleDateString()
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Project Name', 'Type', 'Scale', 'Risk Score', 'Risk Level', 'Last Updated']],
+          body: projectBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primary, textColor: colors.white },
+          columnStyles: {
+            0: { cellWidth: 'auto' },
+            1: { cellWidth: 'auto' },
+            2: { cellWidth: 'auto' },
+            3: { halign: 'right' },
+            4: { halign: 'center' },
+            5: { cellWidth: 'auto' }
+          },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 4) {
+              const riskLevel = data.cell.text[0].toLowerCase();
+              if (riskLevel === 'high' || riskLevel === 'critical') {
+                doc.setTextColor(...colors.error);
+                doc.setFont(fonts.body, 'bold');
+              } else if (riskLevel === 'medium') {
+                doc.setTextColor(...colors.warning);
+                doc.setFont(fonts.body, 'bold');
+              } else {
+                doc.setTextColor(...colors.success);
+                doc.setFont(fonts.body, 'bold');
+              }
+            }
+          }
+        });
+      }
+
+      // Monthly Trends
+      if (metrics.monthlyTrends.length > 0) {
+        addSectionHeader('Performance Trends', 'Monthly project creation and risk trends');
+        const trendsBody = metrics.monthlyTrends.map((trend: any) => [
+          trend.month,
+          trend.projects.toString(),
+          `${(trend.avgRisk * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Month', 'Projects Created', 'Average Risk']],
+          body: trendsBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primaryLight, textColor: colors.white }
+        });
+      }
+
+      // Add page numbers to all pages
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        drawFooterOnEveryPage({ pageNumber: i });
+      }
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const userName = safeText(user.name, 'user').toLowerCase().replace(/\s/g, '-');
+      doc.save(`personal-risk-report-${userName}-${dateStr}.pdf`);
+
+    } catch (error) {
+      console.error('User PDF Generation Error:', error);
+      alert('Failed to generate user report. See console for details.');
+    }
+  };
+
+  const exportOrganizationReportPDF = () => {
+    if (!user?.organization) {
+      alert('Organization data not available for PDF export');
+      return;
+    }
+
+    try {
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      const margin = 15;
+      const contentWidth = pageWidth - (margin * 2);
+
+      // Professional color palette
+      const colors = {
+        primary: [30, 41, 59] as [number, number, number],
+        primaryLight: [51, 65, 85] as [number, number, number],
+        accent: [20, 184, 166] as [number, number, number],
+        accentLight: [45, 212, 191] as [number, number, number],
+        text: [15, 23, 42] as [number, number, number],
+        textSecondary: [71, 85, 105] as [number, number, number],
+        background: [241, 245, 249] as [number, number, number],
+        white: [255, 255, 255] as [number, number, number],
+        success: [22, 163, 74] as [number, number, number],
+        warning: [217, 119, 6] as [number, number, number],
+        error: [220, 38, 38] as [number, number, number],
+      };
+
+      const fonts = {
+        body: 'helvetica',
+        bold: 'helvetica'
+      };
+
+      const safeText = (text: any, fallback = 'N/A'): string => {
+        if (text === undefined || text === null) return fallback;
+        return String(text).replace(/[^\x20-\x7E\n\r\t]/g, '').trim();
+      };
+
+      const drawHeaderOnEveryPage = () => {
+        // Header Background
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, 0, pageWidth, 40, 'F');
+        doc.setFillColor(...colors.accent);
+        doc.rect(0, 40, pageWidth, 2, 'F');
+
+        // Logo
+        doc.setTextColor(...colors.white);
+        doc.setFont(fonts.bold, 'bold');
+        doc.setFontSize(10);
+        doc.text('CYBER RISK', margin, 20);
+        doc.setFont(fonts.body, 'normal');
+        doc.setFontSize(8);
+        doc.text('ASSESSMENT PLATFORM', margin, 27);
+
+        // Main Title
+        doc.setTextColor(...colors.white);
+        doc.setFont(fonts.bold, 'bold');
+        doc.setFontSize(16);
+        doc.text('Organization Risk Assessment Report', pageWidth / 2, 25, { align: 'center' });
+
+        // Report Metadata
+        const reportDate = new Date().toLocaleDateString('en-US', {
+          year: 'numeric', month: 'long', day: 'numeric'
+        });
+        doc.setFont(fonts.body, 'normal');
+        doc.setFontSize(8);
+        doc.text(`Organization: ${safeText(user.organization?.name)}`, pageWidth - margin, 15, { align: 'right' });
+        doc.text(`Date: ${reportDate}`, pageWidth - margin, 22, { align: 'right' });
+        doc.text(`Report ID: ${Date.now().toString().slice(-8)}`, pageWidth - margin, 29, { align: 'right' });
+      };
+
+      const drawFooterOnEveryPage = (data: any) => {
+        const pageCount = (doc as any).internal.getNumberOfPages();
+        doc.setFont(fonts.body, 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(...colors.textSecondary);
+
+        // Footer Line
+        doc.setDrawColor(...colors.accent);
+        doc.setLineWidth(0.5);
+        doc.line(margin, pageHeight - 18, pageWidth - margin, pageHeight - 18);
+        
+        // Footer Text
+        const footerText = 'Confidential | Organization Risk Assessment Report';
+        doc.text(footerText, margin, pageHeight - 10);
+        const pageNumText = `Page ${data.pageNumber} of ${pageCount}`;
+        doc.text(pageNumText, pageWidth - margin, pageHeight - 10, { align: 'right' });
+      };
+
+      const addSectionHeader = (title: string, subtitle: string) => {
+        const currentY = (doc as any).lastAutoTable?.finalY || 50;
+        
+        autoTable(doc, {
+          startY: currentY + 15,
+          body: [[{ content: title, styles: { cellPadding: { top: 8, bottom: 2, left: 8 } } }]],
+          theme: 'plain',
+          styles: {
+            font: fonts.bold,
+            fontStyle: 'bold',
+            fontSize: 14,
+            textColor: colors.primary,
+          },
+          didDrawCell: (data: any) => {
+            doc.setFillColor(...colors.accent);
+            doc.rect(margin, data.cell.y, 3, data.cell.height, 'F');
+          },
+        });
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY,
+          body: [[{ content: subtitle, styles: { cellPadding: { top: 0, bottom: 8, left: 8 } } }]],
+          theme: 'plain',
+          styles: {
+            font: fonts.body,
+            fontSize: 10,
+            textColor: colors.textSecondary,
+          },
+        });
+      };
+
+      // Start PDF Generation
+      const startY = 50;
+      
+      // Executive Summary
+      autoTable(doc, {
+        startY: startY,
+        body: [
+          [
+            { content: `Total Projects\n${metrics.totalProjects}`, styles: { halign: 'center' } },
+            { content: `Risk Mitigated\n${metrics.totalRiskMitigated}%`, styles: { halign: 'center' } },
+            { content: `Average Risk\n${metrics.averageRiskScore}%`, styles: { halign: 'center' } },
+            { content: `High Risk Projects\n${metrics.highRiskProjects}`, styles: { halign: 'center' } },
+          ]
+        ],
+        theme: 'grid',
+        styles: { font: fonts.bold, fontSize: 12, fontStyle: 'bold', cellPadding: 8, valign: 'middle' },
+        headStyles: { fillColor: colors.primary, textColor: colors.white },
+        didDrawPage: (data) => {
+          drawHeaderOnEveryPage();
+          drawFooterOnEveryPage(data);
+        }
+      });
+
+      // Team Performance
+      if (orgMetrics && orgMetrics.projectsByUser) {
+        addSectionHeader('Team Performance', 'Project contributions by team members');
+        const teamBody = Object.entries(orgMetrics.projectsByUser).map(([userName, count]) => {
+          const avgRisk = orgMetrics.averageRiskByUser?.[userName] || 0;
+          return [
+            safeText(userName),
+            count.toString(),
+            `${(avgRisk * 100).toFixed(1)}%`
+          ];
+        });
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Team Member', 'Projects', 'Avg Risk Score']],
+          body: teamBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primary, textColor: colors.white },
+          columnStyles: {
+            1: { halign: 'center' },
+            2: { halign: 'right' }
+          },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 2) {
+              const riskValue = parseFloat(data.cell.text[0]);
+              if (riskValue >= 70) {
+                doc.setTextColor(...colors.error);
+                doc.setFont(fonts.body, 'bold');
+              } else if (riskValue >= 40) {
+                doc.setTextColor(...colors.warning);
+                doc.setFont(fonts.body, 'bold');
+              } else {
+                doc.setTextColor(...colors.success);
+                doc.setFont(fonts.body, 'bold');
+              }
+            }
+          }
+        });
+      }
+
+      // Risk Distribution
+      if (metrics.riskDistribution.length > 0) {
+        addSectionHeader('Organization Risk Distribution', 'Breakdown of risk levels across all projects');
+        const riskBody = metrics.riskDistribution.map((item: any) => [
+          item.name,
+          item.value.toString(),
+          `${((item.value / metrics.totalProjects) * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Risk Level', 'Count', 'Percentage']],
+          body: riskBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primary, textColor: colors.white },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 0) {
+              const riskLevel = data.cell.text[0].toLowerCase();
+              if (riskLevel === 'high' || riskLevel === 'critical') {
+                doc.setTextColor(...colors.error);
+                doc.setFont(fonts.body, 'bold');
+              } else if (riskLevel === 'medium') {
+                doc.setTextColor(...colors.warning);
+                doc.setFont(fonts.body, 'bold');
+              } else {
+                doc.setTextColor(...colors.success);
+                doc.setFont(fonts.body, 'bold');
+              }
+            }
+          }
+        });
+      }
+
+      // Project Type Distribution
+      if (metrics.projectTypeDistribution.length > 0) {
+        addSectionHeader('Project Type Analysis', 'Distribution of projects by type across organization');
+        const typeBody = metrics.projectTypeDistribution.map((item: any) => [
+          item.name,
+          item.value.toString(),
+          `${((item.value / metrics.totalProjects) * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Project Type', 'Count', 'Percentage']],
+          body: typeBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primaryLight, textColor: colors.white }
+        });
+      }
+
+      // Company Scale Distribution
+      if (metrics.companyScaleDistribution.length > 0) {
+        addSectionHeader('Company Scale Analysis', 'Distribution of projects by company scale');
+        const scaleBody = metrics.companyScaleDistribution.map((item: any) => [
+          item.name,
+          item.projects.toString(),
+          `${((item.projects / metrics.totalProjects) * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Company Scale', 'Count', 'Percentage']],
+          body: scaleBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primaryLight, textColor: colors.white }
+        });
+      }
+
+      // All Organization Projects
+      if (currentProjects.length > 0) {
+        addSectionHeader('Organization Project Portfolio', 'Complete view of all assessed projects');
+        const projectBody = currentProjects.map((project: any) => [
+          safeText(project.projectName),
+          safeText(project.userId?.name || 'Unknown'),
+          safeText(project.projectType),
+          safeText(project.companyScale),
+          `${((project.averageRisk || 0) * 100).toFixed(1)}%`,
+          (project.riskLevel || 'unknown').toUpperCase(),
+          new Date(project.updatedAt).toLocaleDateString()
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Project Name', 'Team Member', 'Type', 'Scale', 'Risk Score', 'Risk Level', 'Updated']],
+          body: projectBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primary, textColor: colors.white },
+          columnStyles: {
+            0: { cellWidth: 'auto' },
+            1: { cellWidth: 'auto' },
+            2: { cellWidth: 'auto' },
+            3: { cellWidth: 'auto' },
+            4: { halign: 'right' },
+            5: { halign: 'center' },
+            6: { cellWidth: 'auto' }
+          },
+          didDrawCell: (data) => {
+            if (data.section === 'body' && data.column.index === 5) {
+              const riskLevel = data.cell.text[0].toLowerCase();
+              if (riskLevel === 'high' || riskLevel === 'critical') {
+                doc.setTextColor(...colors.error);
+                doc.setFont(fonts.body, 'bold');
+              } else if (riskLevel === 'medium') {
+                doc.setTextColor(...colors.warning);
+                doc.setFont(fonts.body, 'bold');
+              } else {
+                doc.setTextColor(...colors.success);
+                doc.setFont(fonts.body, 'bold');
+              }
+            }
+          }
+        });
+      }
+
+      // Monthly Trends
+      if (metrics.monthlyTrends.length > 0) {
+        addSectionHeader('Organization Performance Trends', 'Monthly project creation and risk trends');
+        const trendsBody = metrics.monthlyTrends.map((trend: any) => [
+          trend.month,
+          trend.projects.toString(),
+          `${(trend.avgRisk * 100).toFixed(1)}%`
+        ]);
+        
+        autoTable(doc, {
+          startY: (doc as any).lastAutoTable.finalY + 5,
+          head: [['Month', 'Projects Created', 'Average Risk']],
+          body: trendsBody,
+          theme: 'striped',
+          headStyles: { fillColor: colors.primaryLight, textColor: colors.white }
+        });
+      }
+
+      // Add page numbers to all pages
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        drawFooterOnEveryPage({ pageNumber: i });
+      }
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const orgName = safeText(user.organization?.name, 'organization').toLowerCase().replace(/\s/g, '-');
+      doc.save(`organization-risk-report-${orgName}-${dateStr}.pdf`);
+
+    } catch (error) {
+      console.error('Organization PDF Generation Error:', error);
+      alert('Failed to generate organization report. See console for details.');
+    }
+  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -350,29 +1044,55 @@ const Reports = () => {
             )}
           </Box>
           
-          {/* Dev Tool Toggle */}
-          <Paper elevation={2} sx={{ p: 2, bgcolor: 'grey.50', border: '2px dashed', borderColor: 'grey.300' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <DeveloperModeIcon color="primary" />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={useDummyData}
-                    onChange={(e) => setUseDummyData(e.target.checked)}
-                    color="primary"
-                  />
-                }
-                label={
-                  <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                    {useDummyData ? 'Demo Data' : 'Live Data'}
-                  </Typography>
-                }
-              />
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            {/* Export Buttons */}
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                onClick={exportUserReportPDF}
+                size="small"
+                sx={{ minWidth: 'auto' }}
+              >
+                Export Personal Report
+              </Button>
+              {isManager() && user?.organization && viewMode === 'organization' && (
+                <Button
+                  variant="outlined"
+                  startIcon={<DownloadIcon />}
+                  onClick={exportOrganizationReportPDF}
+                  size="small"
+                  sx={{ minWidth: 'auto' }}
+                >
+                  Export Organization Report
+                </Button>
+              )}
             </Box>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              {useDummyData ? 'Showing presentation data' : 'Showing real user data'}
-            </Typography>
-          </Paper>
+            
+            {/* Dev Tool Toggle */}
+            <Paper elevation={2} sx={{ p: 2, bgcolor: 'grey.50', border: '2px dashed', borderColor: 'grey.300' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <DeveloperModeIcon color="primary" />
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={useDummyData}
+                      onChange={(e) => setUseDummyData(e.target.checked)}
+                      color="primary"
+                    />
+                  }
+                  label={
+                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                      {useDummyData ? 'Demo Data' : 'Live Data'}
+                    </Typography>
+                  }
+                />
+              </Box>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                {useDummyData ? 'Showing presentation data' : 'Showing real user data'}
+              </Typography>
+            </Paper>
+          </Box>
         </Box>
         
         {/* View Mode Tabs - Only show for managers */}

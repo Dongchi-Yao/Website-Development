@@ -21,6 +21,7 @@ interface RiskMitigationSectionProps {
   isUpdatingStrategy: boolean;
   enhancedDescriptions: Map<string, RiskMitigationRecommendation>;
   loadingRecommendations: Set<string>;
+  currentRiskScore?: number; // Reliable risk calculation from Risk Analysis Results
 }
 
 export const RiskMitigationSection: React.FC<RiskMitigationSectionProps> = ({
@@ -37,6 +38,7 @@ export const RiskMitigationSection: React.FC<RiskMitigationSectionProps> = ({
   isUpdatingStrategy,
   enhancedDescriptions,
   loadingRecommendations,
+  currentRiskScore,
 }) => {
 
   const currentRound = strategy.rounds.find(r => r.roundNumber === selectedRound);
@@ -85,6 +87,7 @@ export const RiskMitigationSection: React.FC<RiskMitigationSectionProps> = ({
           selectedRound={selectedRound}
           isUpdatingStrategy={isUpdatingStrategy}
           onRoundSelect={onRoundChange}
+          currentRiskScore={currentRiskScore}
         />
       ) : currentRound ? (
         <RoundDetails
@@ -100,6 +103,8 @@ export const RiskMitigationSection: React.FC<RiskMitigationSectionProps> = ({
           onContinueToNextRound={handleContinueToNextRound}
           applyingRecommendation={applyingRecommendation}
           hasNextRound={hasNextRound}
+          currentRiskScore={currentRiskScore}
+          initialRisk={strategy.initialRisk}
         />
       ) : (
         <Alert severity="warning">
