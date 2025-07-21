@@ -130,7 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [state, dispatch] = useReducer(authReducer, initialState);
   const [error, setError] = React.useState<string | null>(null);
 
-  const API_BASE_URL = 'http://localhost:50003/api';
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
   // Check if user is authenticated on app start
   useEffect(() => {

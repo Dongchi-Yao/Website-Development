@@ -1,26 +1,48 @@
-from typing import List, Dict, Any
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 import torch
-import pandas as pd
 import numpy as np
-import json
+import pandas as pd
+from typing import List, Dict, Optional
 import os
+import json
+from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+from sse_starlette.sse import EventSourceResponse
+import logging
+from risk_mitigation_strategy_new import RiskMitigationAnalyzer
 
-app = FastAPI(title="Risk Quantification Service", version="1.0.0")
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+app = FastAPI()
 
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8090", "http://localhost:3000", "http://127.0.0.1:8090", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:8090", 
+        "http://localhost:3000", 
+        "http://127.0.0.1:8090", 
+        "http://127.0.0.1:3000",
+        "http://192.168.50.99:8090",
+        "https://cyberdev.smartconstructionresearch.com",
+        "http://cyberdev.smartconstructionresearch.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Pydantic models for request/response
+# Store latest risk probabilities
+latest_probabilities = None
+
 class RiskInput(BaseModel):
+    user_data: List[int]
+    current_risk: Optional[float] = None  # Override for consistent risk calculation
+
+class SimpleRiskInput(BaseModel):
     project_duration: str
     project_type: str
     has_cyber_legal_team: str
@@ -39,44 +61,86 @@ class RiskInput(BaseModel):
     uses_mfa: str
 
 class RiskOutput(BaseModel):
-    ransomware: Dict[str, Any]
-    phishing: Dict[str, Any]
-    data_breach: Dict[str, Any]
-    insider_attack: Dict[str, Any]
-    supply_chain: Dict[str, Any]
+    probabilities: List[float]
+    risk_types: List[str] = ["ransomware", "phishing", "dataBreach", "insiderAttack", "supplyChain"]
 
-class UserDataInput(BaseModel):
-    user_data: List[int]
+class MitigationRecommendation(BaseModel):
+    featureGroup: str
+    featureName: str
+    currentOption: str
+    recommendedOption: str
+    optionIndex: int
+    description: str
+    riskReduction: float = 0.0  # Individual recommendation risk reduction
 
-# Global variables for model and preprocessing
-model_ft = None
-df_reference = None
-feature_cols = None
-group_info_2 = None
+class RecommendationRiskReduction(BaseModel):
+    featureGroup: str
+    featureName: str
+    currentOption: str
+    recommendedOption: str
+    riskReduction: float
+    riskReductionPercentage: float
 
-def load_model():
+class MitigationRound(BaseModel):
+    roundNumber: int
+    features: List[str]
+    currentRisk: float
+    projectedRisk: float
+    riskReduction: float
+    reductionPercentage: float
+    recommendations: List[MitigationRecommendation]
+
+class MitigationStrategy(BaseModel):
+    initialRisk: float
+    finalRisk: float
+    totalReduction: float
+    totalReductionPercentage: float
+    rounds: List[MitigationRound]
+    implementationPriority: str
+
+def set_seed(seed):
+    import random
+    import torch
+    import numpy as np
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+def load_model_and_data():
     """Load the PyTorch model and preprocessing data"""
-    global model_ft, df_reference, feature_cols, group_info_2
-    
     try:
-        print("Starting model loading...")
+        logger.debug("Starting model and data loading...")
+        
+        # Get the directory containing the model files
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # Model files are in the backend python_service directory
+        data_dir = os.path.join(current_dir, "models")
+        logger.debug(f"Data directory: {data_dir}")
         
         # Load reference data for preprocessing
-        print("Loading reference data...")
-        df_reference = pd.read_csv('models/new_data.csv')
-        feature_cols = df_reference.columns[:-5]  # Exclude the last 5 columns (target variables)
-        print(f"Reference data loaded. Features: {len(feature_cols)}")
+        df_path = os.path.join(data_dir, "new_data.csv")
+        logger.debug(f"Loading reference data from: {df_path}")
+        df = pd.read_csv(df_path)
+        logger.debug(f"Reference data loaded. Shape: {df.shape}")
         
         # Load group info
-        print("Loading group info...")
-        group_info_2 = torch.load('models/group_info_2.pth', map_location=torch.device('cpu'))
-        print("Group info loaded successfully")
+        group_info_path = os.path.join(data_dir, "group_info_2.pth")
+        logger.debug(f"Loading group info from: {group_info_path}")
+        group_info_2 = torch.load(group_info_path, map_location=torch.device('cpu'))
+        logger.debug("Group info loaded successfully")
         
-        # Import and initialize model
-        print("Initializing model...")
-        from models.mixture_of_experts_model_definition import MixtureOfExperts
+        # Import model definition
+        model_def_path = os.path.join(data_dir, "mixture_of_experts_model_definition.py")
+        logger.debug(f"Loading model definition from: {model_def_path}")
+        with open(model_def_path) as f:
+            exec(f.read(), globals())
+        logger.debug("Model definition loaded successfully")
         
-        model_ft = MixtureOfExperts(
+        # Initialize model with exact same parameters as script.py
+        model = MixtureOfExperts(
             group_info_2,
             hidden_dim=64,
             output_dim=5,
@@ -85,247 +149,356 @@ def load_model():
             gating_use_mlp=False,
             gating_hidden_dim=128
         )
-        print("Model initialized")
+        logger.debug("Model initialized successfully")
         
-        # Load trained weights
-        print("Loading model weights...")
-        checkpoint = torch.load('models/best_model_ft.pth', map_location=torch.device('cpu'))
-        model_ft.load_state_dict(checkpoint['model_state_dict'])
-        model_ft.eval()
+        # Load model weights
+        checkpoint = torch.load(
+            os.path.join(data_dir, "best_model_ft.pth"),
+            map_location=torch.device('cpu')
+        )
+        model.load_state_dict(checkpoint['model_state_dict'])
+        model.eval()
+        logger.debug("Model weights loaded successfully")
         
-        print("Model loaded successfully!")
+        # Create synthetic X_train for SHAP analysis
+        logger.debug("Creating synthetic X_train for SHAP analysis...")
+        X_train = create_synthetic_training_data(df, group_info_2)
+        logger.debug(f"Synthetic X_train created. Shape: {X_train.shape}")
+        
+        return model, df, group_info_2, X_train
+    except Exception as e:
+        logger.error(f"Error loading model and data: {str(e)}", exc_info=True)
+        return None, None, None, None
+
+def create_synthetic_training_data(df: pd.DataFrame, group_info: dict) -> torch.Tensor:
+    """Create synthetic training data for SHAP analysis"""
+    try:
+        # Get feature columns (all except last 5 columns)
+        feature_cols = df.columns[:-5]
+        
+        # Create synthetic samples by varying the original data
+        synthetic_samples = []
+        
+        # Use original data as base
+        for _, row in df.head(100).iterrows():  # Use first 100 samples as base
+            # Get the feature values
+            feature_values = row[feature_cols].astype(str).tolist()
+            
+            # Create variations of this sample
+            for variation in range(5):  # Create 5 variations per sample
+                # Randomly modify some features
+                modified_values = feature_values.copy()
+                for i in range(len(modified_values)):
+                    if np.random.random() < 0.3:  # 30% chance to modify each feature
+                        # Get possible values for this feature
+                        possible_values = df[feature_cols[i]].astype(str).unique()
+                        modified_values[i] = np.random.choice(possible_values)
+                
+                synthetic_samples.append(modified_values)
+        
+        # Create one-hot encoding for all synthetic samples
+        synthetic_df = pd.DataFrame(synthetic_samples, columns=feature_cols)
+        
+        # Combine with original data for one-hot encoding
+        all_feat = df.iloc[:, :-5].astype(str)
+        combined = pd.concat([all_feat, synthetic_df], ignore_index=True)
+        
+        # Create one-hot encoding
+        df_hot = pd.get_dummies(combined)
+        df_hot["1.5_4"] = False
+        df_hot = df_hot.reindex(sorted(df_hot.columns), axis=1)
+        
+        # Get only the synthetic samples (after the original data)
+        synthetic_hot = df_hot.iloc[len(df):].reset_index(drop=True)
+        
+        # Convert to tensor
+        X_train = torch.tensor(synthetic_hot.values.astype(int), dtype=torch.float)
+        
+        logger.debug(f"Created synthetic X_train with {len(synthetic_samples)} samples")
+        return X_train
         
     except Exception as e:
-        print(f"Error loading model: {str(e)}")
-        print(f"Error type: {type(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
-        raise e
+        logger.error(f"Error creating synthetic training data: {str(e)}")
+        # Fallback: create simple random data
+        logger.warning("Using fallback random training data")
+        num_samples = 200
+        num_features = sum(len(cols) for cols in group_info.values())
+        return torch.randint(0, 2, (num_samples, num_features), dtype=torch.float)
 
-def map_frontend_to_model_input(risk_input: RiskInput) -> List[int]:
-    """
-    Map frontend form values to the 16 model input features
-    Based on the column structure: 1.1,1.2,1.3,1.4,1.5,2.1.1,2.1.2,2.1.3,2.2,3.1,3.2,3.3,3.4,4.1,4.2,4.3
-    """
+# Load model and data at startup
+logger.info("Loading model and data...")
+model, df, group_info_2, X_train = load_model_and_data()
+logger.info("Model and data loading completed")
+
+# Initialize risk mitigation analyzer
+mitigation_analyzer = None
+if model is not None and df is not None and group_info_2 is not None:
+    try:
+        mitigation_analyzer = RiskMitigationAnalyzer(model, df, group_info_2, X_train)
+        logger.info("Risk mitigation analyzer initialized successfully with SHAP support")
+    except Exception as e:
+        logger.error(f"Failed to initialize risk mitigation analyzer: {str(e)}")
+        mitigation_analyzer = None
+
+def convert_simple_input_to_integers(input_data: SimpleRiskInput) -> List[int]:
+    """Convert SimpleRiskInput to integer array format expected by the model"""
     
-    # Mapping dictionaries for each feature
-    duration_map = {"<=3m": 0, "3-6m": 1, "6-12m": 2, "12-24m": 3, ">24m": 4}
-    
-    project_type_map = {
-        "transportation": 0, "government": 1, "healthcare": 2, 
-        "commercial": 3, "residential": 4, "other": 5
+    # Define the mapping for each field based on the model training
+    mappings = {
+        'project_duration': ['<=3m', '3-6m', '6-12m', '12-24m', '>24m'],
+        'project_type': ['transportation', 'government', 'healthcare', 'commercial', 'residential', 'other'],
+        'has_cyber_legal_team': ['yes', 'no', 'unsure'],
+        'company_scale': ['<=30', '31-60', '61-100', '101-150', '>150'],
+        'project_phase': ['planning', 'design', 'construction', 'maintenance', 'demolition'],
+        'layer_teams': ['<=10', '11-20', '21-30', '31-40', '>40', 'na'],
+        'team_overlap': ['<=20', '21-40', '41-60', '61-80', '81-100'],
+        'has_it_team': ['yes', 'no', 'unsure'],
+        'devices_with_firewall': ['<=20', '21-40', '41-60', '61-80', '81-100'],
+        'network_type': ['public', 'private', 'both'],
+        'phishing_fail_rate': ['<=20', '21-40', '41-60', '61-80', '81-100'],
+        'governance_level': ['level1', 'level2', 'level3', 'level4', 'level5'],
+        'allow_password_reuse': ['yes', 'no'],
+        'uses_mfa': ['yes', 'no']
     }
     
-    yes_no_map = {"yes": 1, "no": 0, "unsure": 0}
+    def safe_index(mapping_list, value, field_name):
+        try:
+            return mapping_list.index(value)
+        except ValueError:
+            logger.warning(f"Unknown value '{value}' for field '{field_name}', using 0")
+            return 0
     
-    company_scale_map = {"<=30": 0, "31-60": 1, "61-100": 2, "101-150": 3, ">150": 4}
-    
-    project_phase_map = {
-        "planning": 0, "design": 1, "construction": 2, 
-        "maintenance": 3, "demolition": 4
-    }
-    
-    team_count_map = {"<=10": 0, "11-20": 1, "21-30": 2, "31-40": 3, ">40": 4, "na": 0}
-    
-    percentage_map = {"<=20": 0, "21-40": 1, "41-60": 2, "61-80": 3, "81-100": 4}
-    
-    network_map = {"public": 0, "private": 1, "both": 2}
-    
-    governance_map = {"level1": 0, "level2": 1, "level3": 2, "level4": 3, "level5": 4}
-    
-    # Map input values to model format (16 features)
-    user_data = [
-        duration_map.get(risk_input.project_duration, 0),  # 1.1
-        project_type_map.get(risk_input.project_type, 0),  # 1.2
-        yes_no_map.get(risk_input.has_cyber_legal_team, 0),  # 1.3
-        company_scale_map.get(risk_input.company_scale, 0),  # 1.4
-        project_phase_map.get(risk_input.project_phase, 0),  # 1.5
-        team_count_map.get(risk_input.layer1_teams, 0),  # 2.1.1
-        team_count_map.get(risk_input.layer2_teams, 0),  # 2.1.2
-        team_count_map.get(risk_input.layer3_teams, 0),  # 2.1.3
-        percentage_map.get(risk_input.team_overlap, 0),  # 2.2
-        yes_no_map.get(risk_input.has_it_team, 0),  # 3.1
-        percentage_map.get(risk_input.devices_with_firewall, 0),  # 3.2
-        network_map.get(risk_input.network_type, 0),  # 3.3
-        percentage_map.get(risk_input.phishing_fail_rate, 0),  # 3.4
-        governance_map.get(risk_input.governance_level, 0),  # 4.1
-        yes_no_map.get(risk_input.allow_password_reuse, 0),  # 4.2
-        yes_no_map.get(risk_input.uses_mfa, 0),  # 4.3
+    # Convert to integer array - order must match model training
+    result = [
+        safe_index(mappings['project_duration'], input_data.project_duration, 'project_duration'),
+        safe_index(mappings['project_type'], input_data.project_type, 'project_type'),
+        safe_index(mappings['has_cyber_legal_team'], input_data.has_cyber_legal_team, 'has_cyber_legal_team'),
+        safe_index(mappings['company_scale'], input_data.company_scale, 'company_scale'),
+        safe_index(mappings['project_phase'], input_data.project_phase, 'project_phase'),
+        safe_index(mappings['layer_teams'], input_data.layer1_teams, 'layer1_teams'),
+        safe_index(mappings['layer_teams'], input_data.layer2_teams, 'layer2_teams'),
+        safe_index(mappings['layer_teams'], input_data.layer3_teams, 'layer3_teams'),
+        safe_index(mappings['team_overlap'], input_data.team_overlap, 'team_overlap'),
+        safe_index(mappings['has_it_team'], input_data.has_it_team, 'has_it_team'),
+        safe_index(mappings['devices_with_firewall'], input_data.devices_with_firewall, 'devices_with_firewall'),
+        safe_index(mappings['network_type'], input_data.network_type, 'network_type'),
+        safe_index(mappings['phishing_fail_rate'], input_data.phishing_fail_rate, 'phishing_fail_rate'),
+        safe_index(mappings['governance_level'], input_data.governance_level, 'governance_level'),
+        safe_index(mappings['allow_password_reuse'], input_data.allow_password_reuse, 'allow_password_reuse'),
+        safe_index(mappings['uses_mfa'], input_data.uses_mfa, 'uses_mfa')
     ]
     
-    return user_data
+    logger.debug(f"Converted input to integers: {result}")
+    return result
 
-def preprocess_input(user_data: List[int]) -> torch.Tensor:
-    """Preprocess input data using one-hot encoding like in the original script"""
-    global df_reference, feature_cols
-    
-    # Create dataframe with user input
-    sample_feat = pd.DataFrame([user_data], columns=feature_cols).astype(str)
-    
-    # Get all reference features and combine with user input
-    all_feat = df_reference.iloc[:, :-5].astype(str)
-    combined = pd.concat([all_feat, sample_feat], ignore_index=True)
-    
-    # One-hot encode
-    df_hot = pd.get_dummies(combined)
-    
-    # Add missing column if necessary (from original script)
-    if "1.5_4" not in df_hot.columns:
+def preprocess_input(user_data: List[int], df: pd.DataFrame) -> torch.Tensor:
+    """Preprocess input data exactly as in script.py"""
+    try:
+        logger.debug(f"Preprocessing input data: {user_data}")
+        
+        # Ensure user_data has exactly 16 elements
+        if len(user_data) != 16:
+            raise ValueError("Input data must have exactly 16 numbers")
+        
+        # Get feature columns (all except last 5 columns)
+        feature_cols = df.columns[:-5]
+        logger.debug(f"Feature columns: {feature_cols.tolist()}")
+        
+        # Create sample features DataFrame
+        sample_feat = pd.DataFrame([user_data], columns=feature_cols).astype(str)
+        logger.debug("Sample features created")
+        
+        # Get all features except last 5 columns and convert to string
+        all_feat = df.iloc[:, :-5].astype(str)
+        combined = pd.concat([all_feat, sample_feat], ignore_index=True)
+        logger.debug(f"Combined data shape: {combined.shape}")
+        
+        # Create one-hot encoding exactly as in script.py
+        df_hot = pd.get_dummies(combined)
         df_hot["1.5_4"] = False
-    
-    # Reindex columns
-    df_hot = df_hot.reindex(sorted(df_hot.columns), axis=1)
-    
-    # Get the last row (user input) and convert to tensor
-    sample_tensor = torch.tensor(df_hot.tail(1).values.astype(int), dtype=torch.float)
-    
-    return sample_tensor
-
-def get_risk_level(score: float) -> str:
-    """Convert probability score to risk level"""
-    if score <= 0.25:
-        return "low"
-    elif score <= 0.50:
-        return "medium"
-    elif score <= 0.75:
-        return "high"
-    else:
-        return "critical"
-
-def get_recommendations(risk_type: str, score: float) -> List[str]:
-    """Get recommendations based on risk type and score"""
-    recommendations_db = {
-        "ransomware": [
-            "Implement regular backup procedures",
-            "Deploy advanced endpoint protection",
-            "Conduct regular security awareness training",
-            "Implement network segmentation",
-            "Deploy anti-ransomware solutions"
-        ],
-        "phishing": [
-            "Implement email filtering solutions",
-            "Enhance security awareness training",
-            "Deploy multi-factor authentication",
-            "Implement email authentication protocols",
-            "Regular phishing simulation tests"
-        ],
-        "data_breach": [
-            "Implement data encryption at rest and in transit",
-            "Enhance access control mechanisms",
-            "Regular security audits and monitoring",
-            "Implement data loss prevention (DLP)",
-            "Deploy database activity monitoring"
-        ],
-        "insider_attack": [
-            "Implement user behavior analytics",
-            "Enhance access control and monitoring",
-            "Regular security training for employees",
-            "Implement privileged access management",
-            "Deploy insider threat detection systems"
-        ],
-        "supply_chain": [
-            "Implement vendor risk assessment program",
-            "Enhance supply chain security controls",
-            "Regular security audits of third-party vendors",
-            "Implement supplier security standards",
-            "Deploy third-party risk monitoring"
-        ]
-    }
-    
-    # Return top 3-5 recommendations based on score severity
-    recs = recommendations_db.get(risk_type, [])
-    if score > 0.75:
-        return recs[:5]  # All recommendations for critical
-    elif score > 0.50:
-        return recs[:4]  # 4 recommendations for high
-    else:
-        return recs[:3]  # 3 recommendations for medium/low
-
-@app.on_event("startup")
-async def startup_event():
-    """Load model on startup"""
-    load_model()
-
-@app.get("/")
-async def root():
-    return {"message": "Risk Quantification Service is running"}
+        df_hot = df_hot.reindex(sorted(df_hot.columns), axis=1)
+        logger.debug(f"One-hot encoded shape: {df_hot.shape}")
+        
+        # Get only the last row (our input data)
+        sample_tensor = torch.tensor(df_hot.tail(1).values.astype(int), dtype=torch.float)
+        logger.debug(f"Final tensor shape: {sample_tensor.shape}")
+        
+        return sample_tensor
+    except Exception as e:
+        logger.error(f"Error in preprocessing: {str(e)}", exc_info=True)
+        raise
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "model_loaded": model_ft is not None}
+    """Check if the service is healthy and model is loaded"""
+    status = {
+        "status": "healthy",
+        "model_loaded": model is not None and df is not None,
+        "model_type": str(type(model)) if model else None,
+        "data_shape": df.shape if df is not None else None,
+        "mitigation_analyzer_loaded": mitigation_analyzer is not None
+    }
+    logger.debug(f"Health check: {status}")
+    return status
 
-@app.post("/predict", response_model=RiskOutput)
-async def predict_risk(risk_input: RiskInput):
-    """Main prediction endpoint with structured input"""
+@app.post("/predict")
+async def predict_risks(input_data: RiskInput) -> RiskOutput:
+    """Predict risk probabilities from input data"""
+    global latest_probabilities
+    
+    logger.debug(f"Received prediction request with data: {input_data.user_data}")
+    
+    if model is None or df is None:
+        logger.error("Model or data not loaded")
+        raise HTTPException(status_code=500, detail="Model or data not loaded")
+    
     try:
-        if model_ft is None:
-            raise HTTPException(status_code=500, detail="Model not loaded")
+        # Preprocess input data
+        input_tensor = preprocess_input(input_data.user_data, df)
+        logger.debug(f"Input tensor prepared: {input_tensor.shape}")
         
-        # Map frontend input to model format
-        user_data = map_frontend_to_model_input(risk_input)
-        
-        # Preprocess input
-        sample_tensor = preprocess_input(user_data)
-        
-        # Make prediction
+        # Get predictions exactly as in script.py
         with torch.no_grad():
-            logits = model_ft(sample_tensor)
-            probs = torch.sigmoid(logits)
+            logits = model(input_tensor)
+            probs = torch.sigmoid(logits).squeeze().tolist()
+            logger.debug(f"Predictions generated: {probs}")
         
-        # Convert to numpy for easier handling
-        probs_np = probs.numpy()[0]
+        # Update latest probabilities
+        latest_probabilities = {
+            "ransomware": probs[0],
+            "phishing": probs[1],
+            "dataBreach": probs[2],
+            "insiderAttack": probs[3],
+            "supplyChain": probs[4]
+        }
+        logger.debug(f"Latest probabilities updated: {latest_probabilities}")
         
-        # Risk type names (order matters - should match model training)
-        risk_types = ["ransomware", "phishing", "data_breach", "insider_attack", "supply_chain"]
-        
-        # Build response
-        results = {}
-        for i, risk_type in enumerate(risk_types):
-            score = float(probs_np[i])
-            level = get_risk_level(score)
-            recommendations = get_recommendations(risk_type, score)
-            
-            results[risk_type] = {
-                "score": int(score * 100),  # Convert to percentage
-                "level": level,
-                "recommendations": recommendations
-            }
-        
-        return RiskOutput(**results)
-        
+        return RiskOutput(probabilities=probs)
     except Exception as e:
+        logger.error(f"Prediction error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
-@app.post("/predict-simple", response_model=Dict[str, Any])
-async def predict_risk_simple(user_data_input: UserDataInput):
-    """Simple prediction endpoint that accepts array input"""
+@app.post("/predict-simple")
+async def predict_risks_simple(input_data: SimpleRiskInput) -> RiskOutput:
+    """Predict risk probabilities from field-based input data"""
+    logger.debug(f"Received simple prediction request with data: {input_data}")
+    
     try:
-        if model_ft is None:
-            raise HTTPException(status_code=500, detail="Model not loaded")
+        # Convert simple input to integer array
+        user_data = convert_simple_input_to_integers(input_data)
         
-        # Validate input array
-        if len(user_data_input.user_data) != 16:
-            raise HTTPException(status_code=400, detail="Expected 16 input values")
+        # Create RiskInput object and call the main predict function
+        risk_input = RiskInput(user_data=user_data)
         
-        # Convert to tensor
-        user_data = user_data_input.user_data
-        sample_tensor = preprocess_input(user_data)
+        return await predict_risks(risk_input)
+    except Exception as e:
+        logger.error(f"Simple prediction error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Simple prediction error: {str(e)}")
+
+class RecommendationRiskReductionRequest(BaseModel):
+    user_data: List[int]
+    featureGroup: str
+    featureName: str
+    currentOption: str
+    recommendedOption: str
+    current_risk: Optional[float] = None  # Override for consistent risk calculation
+
+@app.post("/recommendation-risk-reduction")
+async def calculate_recommendation_risk_reduction(request: RecommendationRiskReductionRequest) -> RecommendationRiskReduction:
+    """Calculate risk reduction for a specific recommendation"""
+    logger.debug(f"Received recommendation risk reduction request: {request}")
+    
+    if mitigation_analyzer is None:
+        logger.error("Mitigation analyzer not initialized")
+        raise HTTPException(status_code=500, detail="Mitigation analyzer not initialized")
+    
+    try:
+        # Calculate risk reduction for the specific recommendation
+        risk_reduction_data = mitigation_analyzer.calculate_single_recommendation_risk_reduction(
+            request.user_data,
+            request.featureGroup,
+            request.featureName,
+            request.currentOption,
+            request.recommendedOption,
+            current_risk_override=request.current_risk
+        )
         
-        # Make prediction
-        with torch.no_grad():
-            logits = model_ft(sample_tensor)
-            probs = torch.sigmoid(logits)
-        
-        # Convert to numpy for easier handling
-        probs_np = probs.numpy()[0]
-        
-        # Return probabilities array as expected by frontend
-        return {"probabilities": probs_np.tolist()}
+        return RecommendationRiskReduction(
+            featureGroup=request.featureGroup,
+            featureName=request.featureName,
+            currentOption=request.currentOption,
+            recommendedOption=request.recommendedOption,
+            riskReduction=risk_reduction_data['riskReduction'],
+            riskReductionPercentage=risk_reduction_data['riskReductionPercentage']
+        )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+        logger.error(f"Recommendation risk reduction calculation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Recommendation risk reduction calculation error: {str(e)}")
+
+@app.post("/mitigation-strategy")
+async def generate_mitigation_strategy(input_data: RiskInput) -> MitigationStrategy:
+    """Generate risk mitigation strategy from input data"""
+    logger.debug(f"Received mitigation strategy request with data: {input_data.user_data}")
+    
+    if mitigation_analyzer is None:
+        logger.error("Mitigation analyzer not initialized")
+        raise HTTPException(status_code=500, detail="Mitigation analyzer not initialized")
+    
+    try:
+        # Generate mitigation strategy with optional current_risk override
+        strategy_data = mitigation_analyzer.generate_mitigation_strategy(
+            input_data.user_data, 
+            current_risk_override=input_data.current_risk
+        )
+        logger.debug(f"Mitigation strategy generated successfully")
+        
+        # Convert to Pydantic models
+        rounds = []
+        for round_data in strategy_data['rounds']:
+            recommendations = [
+                MitigationRecommendation(**rec) for rec in round_data['recommendations']
+            ]
+            round_obj = MitigationRound(
+                roundNumber=round_data['roundNumber'],
+                features=round_data['features'],
+                currentRisk=round_data['currentRisk'],
+                projectedRisk=round_data['projectedRisk'],
+                riskReduction=round_data['riskReduction'],
+                reductionPercentage=round_data['reductionPercentage'],
+                recommendations=recommendations
+            )
+            rounds.append(round_obj)
+        
+        strategy = MitigationStrategy(
+            initialRisk=strategy_data['initialRisk'],
+            finalRisk=strategy_data['finalRisk'],
+            totalReduction=strategy_data['totalReduction'],
+            totalReductionPercentage=strategy_data['totalReductionPercentage'],
+            rounds=rounds,
+            implementationPriority=strategy_data['implementationPriority']
+        )
+        
+        return strategy
+        
+    except Exception as e:
+        logger.error(f"Mitigation strategy generation error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Mitigation strategy generation error: {str(e)}")
+
+@app.get("/stream")
+async def stream_risk_probabilities():
+    """Stream risk probabilities using Server-Sent Events"""
+    async def event_generator():
+        while True:
+            if latest_probabilities:
+                yield {
+                    "event": "message",
+                    "data": json.dumps(latest_probabilities)
+                }
+            await asyncio.sleep(1)
+
+    return EventSourceResponse(event_generator())
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=50004) 
+    uvicorn.run(app, host="0.0.0.0", port=50004, log_level="debug") 

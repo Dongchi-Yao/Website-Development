@@ -29,16 +29,16 @@ services:
       dockerfile: Dockerfile
     container_name: cyber-risk-backend
     restart: unless-stopped
-    depends_on:
-      mongodb:
-        condition: service_healthy
     environment:
       - NODE_ENV=production
       - PORT=50003
-      - MONGODB_URI=mongodb://admin:password@mongodb:27017/cyber-risk-dashboard?authSource=admin
-      - JWT_SECRET=your-super-secure-jwt-secret-key-change-this-in-production
+      - MONGODB_URI=mongodb+srv://admin:2TF9E1VHSZowbXCe@cluster0.fmd7bmj.mongodb.net/cyber-risk-dashboard?retryWrites=true&w=majority&appName=Cluster0
+      - JWT_SECRET=f287206e307ea2ff6502b258681f61cb3a980c6d29f73b5ff25af03601479be6
       - JWT_EXPIRES_IN=30d
       - PYTHON_SERVICE_URL=http://python-service:50004
+      - EMAIL_USER=constructioncyberdashboard.app@gmail.com
+      - EMAIL_PASS=buay mweb hmoh uocu
+      - CLIENT_URL=http://frontend:8090
     volumes:
       - backend_uploads:/app/uploads
     ports:
@@ -80,6 +80,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
+      args:
+        - VITE_API_BASE_URL=/api
+        - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
     container_name: cyber-risk-frontend
     restart: unless-stopped
     depends_on:

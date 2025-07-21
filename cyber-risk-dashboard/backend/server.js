@@ -56,7 +56,13 @@ import {
   changePassword,
   deleteAccount
 } from './controllers/authController.js';
-import { calculateRisk, healthCheck } from './controllers/riskController.js';
+import { 
+  calculateRisk, 
+  healthCheck, 
+  generateMitigationStrategy, 
+  calculateRecommendationRiskReduction,
+  streamRiskProbabilities
+} from './controllers/riskController.js';
 import { saveProject, getUserProjects, getProject, updateProject, deleteProject } from './controllers/projectController.js';
 import { 
   getOrganization, 
@@ -98,6 +104,9 @@ app.get('/api/auth/init-admin', initializeAdmin);
 // Risk quantification routes
 app.post('/api/risk/calculate', calculateRisk);
 app.get('/api/risk/health', healthCheck);
+app.post('/api/risk/mitigation-strategy', generateMitigationStrategy);
+app.post('/api/risk/recommendation-risk-reduction', calculateRecommendationRiskReduction);
+app.get('/api/risk/stream', streamRiskProbabilities);
 
 // Project routes
 app.post('/api/projects', protect, saveProject);
@@ -114,6 +123,10 @@ app.put('/api/organizations/:organizationId', protect, updateOrganization);
 app.delete('/api/organizations/:organizationId/members/:userId', protect, removeMember);
 
 // Add diagnostic endpoint (remove in production)
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
 app.get('/api/debug/user', protect, (req, res) => {
   res.json({
     user: req.user,

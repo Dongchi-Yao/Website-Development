@@ -324,12 +324,29 @@ const riskApiService = {
       }
 
       console.log('Sending data to API:', modelInput);
-      const response = await fetch('http://localhost:50004/predict', {
+      const response = await fetch('/api/risk/calculate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ user_data: modelInput }),
+        body: JSON.stringify({
+          projectDuration: projectInfo.projectDuration,
+          projectType: projectInfo.projectType,
+          hasCyberLegalTeam: projectInfo.hasCyberLegalTeam,
+          companyScale: projectInfo.companyScale,
+          projectPhase: projectInfo.projectPhase,
+          layer1Teams: projectInfo.layer1Teams,
+          layer2Teams: projectInfo.layer2Teams,
+          layer3Teams: projectInfo.layer3Teams,
+          teamOverlap: projectInfo.teamOverlap,
+          hasITTeam: projectInfo.hasITTeam,
+          devicesWithFirewall: projectInfo.devicesWithFirewall,
+          networkType: projectInfo.networkType,
+          phishingFailRate: projectInfo.phishingFailRate,
+          governanceLevel: projectInfo.governanceLevel,
+          allowPasswordReuse: projectInfo.allowPasswordReuse,
+          usesMFA: projectInfo.usesMFA
+        }),
       });
 
       if (!response.ok) {
@@ -340,53 +357,35 @@ const riskApiService = {
 
       const data = await response.json();
       console.log('API Response:', data);
-      const probabilities = data.probabilities;
       
-      // Convert probabilities to risk levels and recommendations
-      const convertToRiskLevel = (prob: number): 'low' | 'medium' | 'high' | 'critical' => {
-        if (prob < 0.3) return 'low';
-        if (prob < 0.6) return 'medium';
-        if (prob < 0.85) return 'high';
-        return 'critical';
-      };
-
-      const getRecommendations = (riskType: string, level: string): string[] => {
-        const baseRecommendations = {
-          low: ['Regular monitoring and basic security measures'],
-          medium: ['Enhanced security protocols', 'Regular staff training'],
-          high: ['Immediate security assessment', 'Advanced protection measures', 'Incident response plan'],
-          critical: ['Urgent security overhaul', 'Expert consultation', 'Comprehensive risk mitigation plan']
-        };
-        return baseRecommendations[level as keyof typeof baseRecommendations];
-      };
-      
+      // Backend now returns formatted risk results directly
       return {
         ransomware: {
-          score: Math.round(probabilities[0] * 100),
-          level: convertToRiskLevel(probabilities[0]),
-          recommendations: getRecommendations('ransomware', convertToRiskLevel(probabilities[0]))
+          score: data.ransomware.score,
+          level: data.ransomware.level,
+          recommendations: data.ransomware.recommendations
         },
         phishing: {
-          score: Math.round(probabilities[1] * 100),
-          level: convertToRiskLevel(probabilities[1]),
-          recommendations: getRecommendations('phishing', convertToRiskLevel(probabilities[1]))
+          score: data.phishing.score,
+          level: data.phishing.level,
+          recommendations: data.phishing.recommendations
         },
         dataBreach: {
-          score: Math.round(probabilities[2] * 100),
-          level: convertToRiskLevel(probabilities[2]),
-          recommendations: getRecommendations('dataBreach', convertToRiskLevel(probabilities[2]))
+          score: data.data_breach.score,
+          level: data.data_breach.level,
+          recommendations: data.data_breach.recommendations
         },
         insiderAttack: {
-          score: Math.round(probabilities[3] * 100),
-          level: convertToRiskLevel(probabilities[3]),
-          recommendations: getRecommendations('insiderAttack', convertToRiskLevel(probabilities[3]))
+          score: data.insider_attack.score,
+          level: data.insider_attack.level,
+          recommendations: data.insider_attack.recommendations
         },
         supplyChain: {
-          score: Math.round(probabilities[4] * 100),
-          level: convertToRiskLevel(probabilities[4]),
-          recommendations: getRecommendations('supplyChain', convertToRiskLevel(probabilities[4]))
+          score: data.supply_chain.score,
+          level: data.supply_chain.level,
+          recommendations: data.supply_chain.recommendations
         }
-      };
+             };
     } catch (error) {
       console.error('Risk calculation error:', error);
       throw error;
@@ -394,7 +393,7 @@ const riskApiService = {
   },
 
   checkHealth: async (): Promise<{ status: string; modelLoaded?: boolean }> => {
-    const response = await fetch('http://localhost:50004/health');
+    const response = await fetch('/api/risk/health');
     return response.json();
   }
 };
@@ -3059,7 +3058,7 @@ const RiskQuantification = () => {
       ];
 
       // Call the mitigation strategy API with consistent current risk
-      const response = await fetch('http://localhost:50004/mitigation-strategy', {
+      const response = await fetch('/api/risk/mitigation-strategy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -3204,7 +3203,7 @@ const RiskQuantification = () => {
       ];
 
       // Call the mitigation strategy API with consistent current risk
-      const response = await fetch('http://localhost:50004/mitigation-strategy', {
+      const response = await fetch('/api/risk/mitigation-strategy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
